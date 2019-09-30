@@ -38,7 +38,7 @@ void Video::run()
     if(ret == _failure)
         emit rejectVideo(this);
     else if((_prefs._thumbnails != cutEnds && hash[0] == 0 ) ||
-            (_prefs._thumbnails == cutEnds && hash[0] == 0 && hash[1] == 0))   //all screen captures black
+            (_prefs._thumbnails == cutEnds && hash[0] == 0 && hash[4] == 0))   //all screen captures black
         emit rejectVideo(this);
     else
         emit acceptVideo(this);
@@ -168,7 +168,7 @@ int Video::takeScreenCaptures(const Db &cache)
         }
     }
 
-    const int hashes = _prefs._thumbnails == cutEnds? 2 : 1;    //if cutEnds mode: separate hash for beginning and end
+    const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;    //if cutEnds mode: separate hash for beginning and end
     processThumbnail(thumbnail, hashes);
     return _success;
 }
@@ -178,8 +178,10 @@ void Video::processThumbnail(QImage &thumbnail, const int &hashes)
     for(int hash=0; hash<hashes; hash++)
     {
         QImage image = thumbnail;
+        int y = (int)hash / 4;
+        int x = hash % 4
         if(_prefs._thumbnails == cutEnds)           //if cutEnds mode: separate thumbnail into first and last frames
-            image = thumbnail.copy(hash*thumbnail.width()/2, 0, thumbnail.width()/2, thumbnail.height());
+            image = thumbnail.copy(x, y, thumbnail.width()/4, thumbnail.height()/4);
 
         cv::Mat mat = cv::Mat(image.height(), image.width(), CV_8UC3, image.bits(), static_cast<uint>(image.bytesPerLine()));
         this->hash[hash] = computePhash(mat);                           //pHash
