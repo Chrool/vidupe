@@ -130,7 +130,7 @@ bool Comparison::bothVideosMatch(const Video *left, const Video *right)
     bool theyMatch = false;
     _phashSimilarity = 0;
 
-    const int hashes = _prefs._thumbnails == cutEnds? 2 : 1;
+    const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;
     for(int hash=0; hash<hashes; hash++)
     {                               //if cutEnds mode: similarity is always the best one of both comparisons
         _phashSimilarity = qMax( _phashSimilarity, phashSimilarity(left, right, hash));
