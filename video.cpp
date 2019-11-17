@@ -179,7 +179,7 @@ void Video::processThumbnail(QImage &thumbnail, const int &hashes)
     {
         QImage image = thumbnail;
         int y = (int)hash / 4;
-        int x = hash % 4
+        int x = hash % 4;
         if(_prefs._thumbnails == cutEnds)           //if cutEnds mode: separate thumbnail into first and last frames
             image = thumbnail.copy(x, y, thumbnail.width()/4, thumbnail.height()/4);
 

@@ -29,8 +29,8 @@ public:
     short width = 0;
     short height = 0;
     QByteArray thumbnail;
-    cv::Mat grayThumb [2];
-    uint64_t hash [2] = { 0, 0 };
+    cv::Mat grayThumb [16];
+    uint64_t hash [16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 private slots:
     void getMetadata(const QString &filename);
