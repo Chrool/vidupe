@@ -31,6 +31,7 @@ public:
     QByteArray thumbnail;
     cv::Mat grayThumb [16];
     uint64_t hash [16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    QHash<QString, int> hash;
 
 private slots:
     void getMetadata(const QString &filename);
