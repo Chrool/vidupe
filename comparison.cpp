@@ -26,27 +26,6 @@ Comparison::~Comparison()
     delete ui;
 }
 
-uint64_t Comparison::BitCount(const uint8_t * src, size_t size)
-{
-    __m128i _sum =  _mm128_setzero_si128();
-    for (size_t i = 0; i < size; i += 16)
-    {
-        //load 16-byte vector
-        __m128i _src = _mm_loadu_si128((__m128i*)(src + i));
-        //get low 4 bit for every byte in vector
-        __m128i lo = _mm_and_si128(_src, F);
-        //sum precalculated value from T
-        _sum = _mm_add_epi64(_sum, _mm_sad_epu8(Z, _mm_shuffle_epi8(T, lo)));
-        //get high 4 bit for every byte in vector
-        __m128i hi = _mm_and_si128(_mm_srli_epi16(_src, 4), F);
-        //sum precalculated value from T
-        _sum = _mm_add_epi64(_sum, _mm_sad_epu8(Z, _mm_shuffle_epi8(T, hi)));
-    }
-    uint64_t sum[2];
-    _mm_storeu_si128((__m128i*)sum, _sum);
-    return sum[0] + sum[1];
-}
-
 void Comparison::reportMatchingVideos()
 {
     int64_t combinedFilesize = 0;
