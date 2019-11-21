@@ -131,47 +131,30 @@ bool Comparison::bothVideosMatch(const Video *left, const Video *right)
     _phashSimilarity = 0;
 
     const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;
-    for(int hash=0; hash<hashes; hash++)
-    {                               //if cutEnds mode: similarity is always the best one of both comparisons
-        _phashSimilarity = qMax( _phashSimilarity, phashSimilarity(left, right, hash));
-        if(_prefs._comparisonMode == _prefs._PHASH)
-        {
-            if(_phashSimilarity >= _prefs._thresholdPhash)
-                theyMatch = true;
-        }                           //ssim comparison is slow, only do it if pHash differs at most 20 bits of 64
-        else if(_phashSimilarity >= qMax(_prefs._thresholdPhash, 44))
-        {
+    if(_prefs._comparisonMode == _prefs._PHASH)
+    {
+        if(left->distances.contains(right->filename){
+            _phashSimilarity=left->distances[right->filename]
+        else {
+            _phashSimilarity = qMax( _phashSimilarity, left->phashSimilarity(right, hashes));
+            left->distances[right->filename] = _phashSimilarity
+        }
+        if(_phashSimilarity >= _prefs._thresholdPhash)
+            theyMatch = true;
+    }  
+    else if(_phashSimilarity >= qMax(_prefs._thresholdPhash, 44))
+    { 
+        for(int hash=0; hash<hashes; hash++)
+        {                               
             _ssimSimilarity = ssim(left->grayThumb[hash], right->grayThumb[hash], _prefs._ssimBlockSize);
             _ssimSimilarity = _ssimSimilarity + _durationModifier / 64.0;   // b/64 bits (phash) <=> p/100 % (ssim)
             if(_ssimSimilarity > _prefs._thresholdSSIM)
                 theyMatch = true;
+            if(theyMatch)               //if cutEnds mode: first comparison matched already, skip second
+                break;
         }
-        if(theyMatch)               //if cutEnds mode: first comparison matched already, skip second
-            break;
     }
     return theyMatch;
-}
-
-int Comparison::phashSimilarity(const Video *left, const Video *right, const int &nthHash)
-{
-    if(left->hash[nthHash] == 0 && right->hash[nthHash] == 0)
-        return 0;
-
-    int distance = 64;
-    uint64_t differentBits = left->hash[nthHash] ^ right->hash[nthHash];    //XOR to value (only ones for differing bits)
-    while(differentBits)
-    {
-        differentBits &= differentBits - 1;                 //count number of bits of value
-        distance--;
-    }
-
-    if( qAbs(left->duration - right->duration) <= 1000 )
-        _durationModifier = 0 + _prefs._sameDurationModifier;               //lower distance if both durations within 1s
-    else
-        _durationModifier = 0 - _prefs._differentDurationModifier;          //raise distance if both durations differ 1s
-
-    distance = distance + _durationModifier;
-    return distance > 64? 64 : distance;
 }
 
 void Comparison::showVideo(const QString &side) const
