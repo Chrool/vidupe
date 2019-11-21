@@ -98,6 +98,19 @@ void Comparison::on_prevVideo_clicked()
     on_nextVideo_clicked();     //went over limit, go forwards until first match
 }
 
+void Comparison::populate_all_comparisons()
+{
+    _seekForwards = true;
+    QVector<Video*>::const_iterator left, right, begin = _videos.cbegin(), end = _videos.cend();
+    for(left=begin+_leftVideo; left<end; left++, _leftVideo++)
+    {
+        for(_rightVideo++, right=begin+_rightVideo; right<end; right++, _rightVideo++)
+            (*left)->phashSimilarity(*right)
+        _rightVideo = _leftVideo + 1;
+    }
+    
+}
+
 void Comparison::on_nextVideo_clicked()
 {
     _seekForwards = true;
