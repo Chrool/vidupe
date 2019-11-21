@@ -268,6 +268,9 @@ QString Video::msToHHMMSS(const int64_t &time) const
 
 int Video::phashSimilarity(const Video *right, const int &hashes)
 {
+    if(self->distances.contains(right->filename){
+        return self->distances[right->filename];
+    }     
     int nearestDistance = 64;
     for(int leftHash=0; leftHash<hashes; leftHash++){
         for(int rightHash=0; rightHash<hashes; rightHash++){
@@ -291,7 +294,9 @@ int Video::phashSimilarity(const Video *right, const int &hashes)
             nearestDistance = nearestDistance > distance ? distance : nearestDistance;
         }
     }
-    return nearestDistance > 64? 64 : distance;
+
+    self->distances[right->filename] = nearestDistance > 64? 64 : distance;
+    return nearestDistance > 64? 64 : nearestDistance;
 }
 
 QImage Video::captureAt(const int &percent, const int &ofDuration) const
