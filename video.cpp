@@ -288,7 +288,7 @@ int Video::phashSimilarity(const Video *right, const int &hashes)
                 _durationModifier = 0 - _prefs._differentDurationModifier;          //raise distance if both durations differ 1s
 
             distance = distance + _durationModifier;
-            nearestDistance = nearestDistance > distance ? distance : nearestDistance
+            nearestDistance = nearestDistance > distance ? distance : nearestDistance;
         }
     }
     return nearestDistance > 64? 64 : distance;
