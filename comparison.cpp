@@ -131,14 +131,14 @@ bool Comparison::bothVideosMatch(const Video *left, const Video *right)
     _phashSimilarity = 0;
 
     const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;
+    if(left->distances.contains(right->filename){
+        _phashSimilarity=left->distances[right->filename];
+    } else {
+        _phashSimilarity = qMax( _phashSimilarity, left->phashSimilarity(right, hashes));
+        left->distances[right->filename] = _phashSimilarity;
+    }
     if(_prefs._comparisonMode == _prefs._PHASH)
     {
-        if(left->distances.contains(right->filename){
-            _phashSimilarity=left->distances[right->filename]
-        else {
-            _phashSimilarity = qMax( _phashSimilarity, left->phashSimilarity(right, hashes));
-            left->distances[right->filename] = _phashSimilarity
-        }
         if(_phashSimilarity >= _prefs._thresholdPhash)
             theyMatch = true;
     }  
