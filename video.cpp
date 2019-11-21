@@ -264,6 +264,36 @@ QString Video::msToHHMMSS(const int64_t &time) const
     return QStringLiteral("%1:%2:%3.%4").arg(paddedHours, paddedMinutes, paddedSeconds).arg(msecs);
 }
 
+
+
+int Video::phashSimilarity(const Video *right, const int &hashes)
+{
+    int nearestDistance = 64;
+    for(int leftHash=0; leftHash<hashes; leftHash++){
+        for(int rightHash=0; rightHash<hashes; rightHash++){
+            if(this->hash[leftHash] == 0 && right->hash[rightHash] == 0)
+                continue;
+
+            uint64_t differentBits = this->hash[leftHash] ^ right->hash[rightHash];    //XOR to value (only ones for differing bits)
+            int distance = 64;
+            while(differentBits)
+            {
+                differentBits &= differentBits - 1;                 //count number of bits of value
+                distance--;
+            }
+
+            if( qAbs(this->duration - right->duration) <= 1000 )
+                _durationModifier = 0 + _prefs._sameDurationModifier;               //lower distance if both durations within 1s
+            else
+                _durationModifier = 0 - _prefs._differentDurationModifier;          //raise distance if both durations differ 1s
+
+            distance = distance + _durationModifier;
+            nearestDistance = nearestDistance > distance ? distance : nearestDistance
+        }
+    }
+    return nearestDistance > 64? 64 : distance;
+}
+
 QImage Video::captureAt(const int &percent, const int &ofDuration) const
 {
     const QTemporaryDir tempDir;
