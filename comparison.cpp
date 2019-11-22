@@ -101,14 +101,23 @@ void Comparison::on_prevVideo_clicked()
 void Comparison::populate_all_comparisons()
 {
     _seekForwards = true;
+    QThreadPool threadPool;
     QVector<Video*>::const_iterator left, right, begin = _videos.cbegin(), end = _videos.cend();
     for(left=begin+_leftVideo; left<end; left++, _leftVideo++)
     {
-        for(_rightVideo++, right=begin+_rightVideo; right<end; right++, _rightVideo++)
-            (*left)->phashSimilarity(*right)
-        _rightVideo = _leftVideo + 1;
+        while(threadPool.activeThreadCount() == threadPool.maxThreadCount())
+            Comparison::processEvents();          //avoid blocking signals in event loop
+
+        QFuture<void> future = QtConcurrent::run(&threadPool, &Comparison, &Comparison::compare_video_with_all_right, *left, begin, _leftVideo)
     }
-    
+    threadPool.waitForDone();
+    Comparison::processEvents();                  //process signals from last threads    
+}
+
+void Comparison::compare_video_with_all_right(const Video *left, QVector<Video*>::const_iterator begin, const int _rightVideo)
+{
+    for(_rightVideo++, right=begin+_rightVideo; right<end; right++, _rightVideo++)
+            (*left)->phashSimilarity(*right)
 }
 
 void Comparison::on_nextVideo_clicked()
