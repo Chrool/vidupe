@@ -35,6 +35,9 @@ public:
     //returns screen capture if it was cached, else return null ptr
     QByteArray readCapture(const int &percent) const;
 
+    //returns screen capture if it was cached, else return null ptr
+    QHash<int, QByteArray>  readCaptures(const QVector<int> &percentages) const;
+
     //save image in cache
     void writeCapture(const int &percent, const QByteArray &image) const;
 

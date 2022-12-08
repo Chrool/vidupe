@@ -12,10 +12,12 @@ Comparison::Comparison(const QVector<Video *> &videosParam, const Prefs &prefsPa
     connect(this, SIGNAL(sendStatusMessage(const QString &)), _prefs._mainwPtr, SLOT(addStatusMessage(const QString &)));
     connect(this, SIGNAL(switchComparisonMode(const int &)),  _prefs._mainwPtr, SLOT(setComparisonMode(const int &)));
     connect(this, SIGNAL(adjustThresholdSlider(const int &)), _prefs._mainwPtr, SLOT(on_thresholdSlider_valueChanged(const int &)));
+    connect(this, SIGNAL(adjustThresholdSliderMax(const int &)), _prefs._mainwPtr, SLOT(on_thresholdSliderMax_valueChanged(const int &)));
 
     if(_prefs._comparisonMode == _prefs._SSIM)
         ui->selectSSIM->setChecked(true);
     ui->thresholdSlider->setValue(QVariant(_prefs._thresholdSSIM * 100).toInt());
+    ui->thresholdSliderMax->setValue(QVariant(_prefs._thresholdSSIMMax * 100).toInt());
     ui->progressBar->setMaximum(_prefs._numberOfVideos * (_prefs._numberOfVideos - 1) / 2);
 
     on_nextVideo_clicked();
@@ -98,28 +100,6 @@ void Comparison::on_prevVideo_clicked()
     on_nextVideo_clicked();     //went over limit, go forwards until first match
 }
 
-void Comparison::populate_all_comparisons()
-{
-    _seekForwards = true;
-    QThreadPool threadPool;
-    QVector<Video*>::const_iterator left, right, begin = _videos.cbegin(), end = _videos.cend();
-    for(left=begin+_leftVideo; left<end; left++, _leftVideo++)
-    {
-        while(threadPool.activeThreadCount() == threadPool.maxThreadCount())
-            Comparison::processEvents();          //avoid blocking signals in event loop
-
-        QFuture<void> future = QtConcurrent::run(&threadPool, &Comparison, &Comparison::compare_video_with_all_right, *left, begin, _leftVideo)
-    }
-    threadPool.waitForDone();
-    Comparison::processEvents();                  //process signals from last threads    
-}
-
-void Comparison::compare_video_with_all_right(const Video *left, QVector<Video*>::const_iterator begin, const int _rightVideo)
-{
-    for(_rightVideo++, right=begin+_rightVideo; right<end; right++, _rightVideo++)
-            (*left)->phashSimilarity(*right)
-}
-
 void Comparison::on_nextVideo_clicked()
 {
     _seekForwards = true;
@@ -153,25 +133,52 @@ bool Comparison::bothVideosMatch(const Video *left, const Video *right)
     _phashSimilarity = 0;
 
     const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;
-    _phashSimilarity = qMax( _phashSimilarity, left->phashSimilarity(right, hashes));
-    if(_prefs._comparisonMode == _prefs._PHASH)
-    {
-        if(_phashSimilarity >= _prefs._thresholdPhash)
-            theyMatch = true;
-    }  
-    else if(_phashSimilarity >= qMax(_prefs._thresholdPhash, 44))
-    { 
-        for(int hash=0; hash<hashes; hash++)
-        {                               
-            _ssimSimilarity = ssim(left->grayThumb[hash], right->grayThumb[hash], _prefs._ssimBlockSize);
-            _ssimSimilarity = _ssimSimilarity + _durationModifier / 64.0;   // b/64 bits (phash) <=> p/100 % (ssim)
-            if(_ssimSimilarity > _prefs._thresholdSSIM)
-                theyMatch = true;
+    for(int left_hash=0; left_hash<hashes; left_hash++)
+    {                               //if cutEnds mode: similarity is always the best one of both comparisons
+        for(int right_hash=0; right_hash<hashes; right_hash++)
+        {
+            _phashSimilarity = qMax( _phashSimilarity, phashSimilarity(left, right, left_hash, right_hash));
+            if(_prefs._comparisonMode == _prefs._PHASH)
+            {
+                if(_phashSimilarity >= _prefs._thresholdPhash && _phashSimilarity <= _prefs._thresholdPhashMax )
+                    theyMatch = true;
+            }                           //ssim comparison is slow, only do it if pHash differs at most 20 bits of 64
+            else if(_phashSimilarity >= qMax(_prefs._thresholdPhash, 44))
+            {
+                _ssimSimilarity = ssim(left->grayThumb[left_hash], right->grayThumb[right_hash], _prefs._ssimBlockSize);
+                _ssimSimilarity = _ssimSimilarity + _durationModifier / 64.0;   // b/64 bits (phash) <=> p/100 % (ssim)
+                if(_ssimSimilarity > _prefs._thresholdSSIM && _ssimSimilarity <= _prefs._thresholdSSIMMax)
+                    theyMatch = true;
+            }
             if(theyMatch)               //if cutEnds mode: first comparison matched already, skip second
                 break;
         }
+        if(theyMatch)               //if cutEnds mode: first comparison matched already, skip second
+            break;
     }
     return theyMatch;
+}
+
+int Comparison::phashSimilarity(const Video *left, const Video *right, const int &leftHash, const int &rightHash)
+{
+    if(left->hash[leftHash] == 0 && right->hash[rightHash] == 0)
+        return 0;
+
+    int distance = 64;
+    uint64_t differentBits = left->hash[leftHash] ^ right->hash[rightHash];    //XOR to value (only ones for differing bits)
+    while(differentBits)
+    {
+        differentBits &= differentBits - 1;                 //count number of bits of value
+        distance--;
+    }
+
+    if( qAbs(left->duration - right->duration) <= 1000 )
+        _durationModifier = 0 + _prefs._sameDurationModifier;               //lower distance if both durations within 1s
+    else
+        _durationModifier = 0 - _prefs._differentDurationModifier;          //raise distance if both durations differ 1s
+
+    distance = distance + _durationModifier;
+    return distance > 64? 64 : distance;
 }
 
 void Comparison::showVideo(const QString &side) const
@@ -475,6 +482,112 @@ void Comparison::on_swapFilenames_clicked() const
     cache.removeVideo(cache.uniqueId(oldRightFilename));
 }
 
+//should swap folder names
+void Comparison::on_swapFolders_clicked() const
+{
+    const QFileInfo leftVideoFile(_videos[_leftVideo]->filename);
+    const QString leftPathname = leftVideoFile.absolutePath();
+    const QString leftFilename = leftVideoFile.fileName();
+    QDir leftDir = leftVideoFile.dir();
+    const QString leftDirName = leftDir.dirName();
+    const QString leftDirPath = leftDir.absolutePath();
+
+    leftDir.cdUp();
+
+    const QFileInfo rightVideoFile(_videos[_rightVideo]->filename);
+    const QString rightPathname = rightVideoFile.absolutePath();
+    const QString rightFilename = rightVideoFile.fileName();
+    QDir rightDir = rightVideoFile.dir();
+    const QString rightDirName = rightDir.dirName();
+    const QString rightDirPath = rightDir.absolutePath();
+
+    rightDir.cdUp();
+
+    const QString tempLeftPath = QStringLiteral("%1/VidupeRenamedVideo").arg(leftDir.absolutePath());
+    const QString newLeftPath = QStringLiteral("%1/%2").arg(leftDir.absolutePath(), rightDirName);
+    const QString newRightPath = QStringLiteral("%1/%2").arg(rightDir.absolutePath(), leftDirName);
+
+    const QString newLeftPathAndFilename = QStringLiteral("%1/%2").arg(newLeftPath, leftFilename);
+    const QString newRightPathAndFilename = QStringLiteral("%1/%2").arg(newRightPath, rightFilename);
+
+    QFile::rename(leftDirPath, tempLeftPath);
+    QFile::rename(rightDirPath, newRightPath);
+    QFile::rename(tempLeftPath, newLeftPath);
+
+    _videos[_leftVideo]->filename = newLeftPathAndFilename;         //update filename in object
+    _videos[_rightVideo]->filename = newRightPathAndFilename;
+
+    ui->leftPathName->setText(newLeftPath);                     //update UI
+    ui->rightPathName->setText(newRightPath);
+
+    Db cache(_videos[_leftVideo]->filename);
+    cache.removeVideo(cache.uniqueId(leftFilename));             //remove both videos from cache
+    cache.removeVideo(cache.uniqueId(rightFilename));
+}
+
+//should swap folder names
+void Comparison::on_swapFilesToFolders_clicked() const
+{
+    const QFileInfo leftVideoFile(_videos[_leftVideo]->filename);
+    const QString leftPathname = leftVideoFile.absolutePath();
+    const QString leftFilename = leftVideoFile.fileName();
+    const QString leftNoExtension = leftFilename.left(leftFilename.lastIndexOf("."));
+    const QString leftExtension = leftFilename.right(leftFilename.length() - leftFilename.lastIndexOf("."));
+
+    QDir leftDir = leftVideoFile.dir();
+    const QString leftDirName = leftDir.dirName();
+    const QString leftDirPath = leftDir.absolutePath();
+
+    leftDir.cdUp();
+
+    const QFileInfo rightVideoFile(_videos[_rightVideo]->filename);
+    const QString rightPathname = rightVideoFile.absolutePath();
+    const QString rightFilename = rightVideoFile.fileName();
+    const QString rightNoExtension = rightFilename.left(rightFilename.lastIndexOf("."));
+    const QString rightExtension = rightFilename.right(rightFilename.length() - rightFilename.lastIndexOf("."));
+
+
+    QDir rightDir = rightVideoFile.dir();
+    const QString rightDirName = rightDir.dirName();
+    const QString rightDirPath = rightDir.absolutePath();
+
+    rightDir.cdUp();
+
+    const QString tempLeftPath = QStringLiteral("%1/VidupeRenamedVideo").arg(leftDir.absolutePath());
+    const QString newLeftPath = QStringLiteral("%1/%2").arg(leftDir.absolutePath(), rightNoExtension);
+    const QString newRightPath = QStringLiteral("%1/%2").arg(rightDir.absolutePath(), leftNoExtension);
+
+    const QString newLeftPathAndFilename = QStringLiteral("%1/%2").arg(newLeftPath, leftFilename);
+    const QString newRightPathAndFilename = QStringLiteral("%1/%2").arg(newRightPath, rightFilename);
+
+    const QString newTempLeftPathAndFilename = QStringLiteral("%1/VidupeRenamedVideo.avi").arg(newLeftPath);
+    const QString newLeftFilenameAfterRename = QStringLiteral("%2.%3").arg(rightDirName, leftExtension);
+    const QString newRightFilenameAfterRename = QStringLiteral("%2.%3").arg(leftDirName, rightExtension);
+
+    const QString newLeftPathAndFilenameAfterRename = QStringLiteral("%1/%2").arg(newLeftPath, newLeftFilenameAfterRename);
+    const QString newRightPathAndFilenameAfterRename = QStringLiteral("%1/%2").arg(newRightPath, newRightFilenameAfterRename);
+
+    QFile::rename(leftDirPath, tempLeftPath);
+    QFile::rename(rightDirPath, newRightPath);
+    QFile::rename(tempLeftPath, newLeftPath);
+
+    QFile::rename(newLeftPathAndFilename, newTempLeftPathAndFilename);
+    QFile::rename(newRightPathAndFilename, newRightPathAndFilenameAfterRename);
+    QFile::rename(newTempLeftPathAndFilename, newLeftPathAndFilenameAfterRename);
+
+    _videos[_leftVideo]->filename = newLeftPathAndFilenameAfterRename;         //update filename in object
+    _videos[_rightVideo]->filename = newRightPathAndFilenameAfterRename;
+
+    ui->leftPathName->setText(newLeftPath);                     //update UI
+    ui->rightPathName->setText(newRightPath);
+    ui->leftFileName->setText(newLeftFilenameAfterRename);
+    ui->rightFileName->setText(newRightFilenameAfterRename);
+
+    Db cache(_videos[_leftVideo]->filename);
+    cache.removeVideo(cache.uniqueId(leftFilename));             //remove both videos from cache
+    cache.removeVideo(cache.uniqueId(rightFilename));
+}
+
 void Comparison::on_thresholdSlider_valueChanged(const int &value)
 {
     _prefs._thresholdSSIM = value / 100.0;
@@ -488,8 +601,38 @@ void Comparison::on_thresholdSlider_valueChanged(const int &value)
     ui->thresholdSlider->setToolTip(thresholdMessage);
 
     emit adjustThresholdSlider(ui->thresholdSlider->value());
+    if(_prefs._thresholdSSIMMax <= _prefs._thresholdSSIM || _prefs._thresholdPhashMax <= _prefs._thresholdPhash)
+    {
+        if(_prefs._thresholdSSIMMax <= _prefs._thresholdSSIM)
+            _prefs._thresholdSSIMMax = (_prefs._thresholdSSIM + .01);
+        if(_prefs._thresholdPhashMax <= _prefs._thresholdPhash)
+            _prefs._thresholdPhashMax = (_prefs._thresholdPhash + 1);
+        emit adjustThresholdSliderMax(ui->thresholdSlider->value() + 2);
+    }
 }
 
+void Comparison::on_thresholdSliderMax_valueChanged(const int &value)
+{
+    _prefs._thresholdSSIMMax = value / 100.0;
+    const int matchingBitsOf64 = static_cast<int>(round(64 * _prefs._thresholdSSIMMax));
+    _prefs._thresholdPhashMax = matchingBitsOf64;
+
+    const QString thresholdMessage = QStringLiteral(
+                "Threshold: %1% (%2/64 bits = match)   Default: 89%\n"
+                "Smaller: less strict, can match different videos (false positive)\n"
+                "Larger: more strict, can miss identical videos (false negative)").arg(value).arg(matchingBitsOf64);
+    ui->thresholdSliderMax->setToolTip(thresholdMessage);
+
+    emit adjustThresholdSliderMax(ui->thresholdSliderMax->value());
+    if(_prefs._thresholdSSIMMax <= _prefs._thresholdSSIM || _prefs._thresholdPhashMax <= _prefs._thresholdPhash)
+    {
+        if(_prefs._thresholdSSIMMax <= _prefs._thresholdSSIM)
+            _prefs._thresholdSSIM = (_prefs._thresholdSSIMMax - .01);
+        if(_prefs._thresholdPhashMax <= _prefs._thresholdPhash)
+            _prefs._thresholdPhash = (_prefs._thresholdPhashMax - 1);
+        emit adjustThresholdSlider(ui->thresholdSliderMax->value() - 2);
+    }
+}
 void Comparison::resizeEvent(QResizeEvent *event)
 {
     Q_UNUSED(event)

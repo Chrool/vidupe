@@ -40,7 +40,7 @@ void Db::createTables() const
                               "codec TEXT, audio TEXT, width INTEGER, height INTEGER);"));
 
     query.exec(QStringLiteral("CREATE TABLE IF NOT EXISTS capture (id TEXT PRIMARY KEY, "
-                              " at8 BLOB, at16 BLOB, at24 BLOB, at32 BLOB, at40 BLOB, at48 BLOB, at52 BLOB, "
+                              " at8 BLOB, at16 BLOB, at24 BLOB, at32 BLOB, at36 BLOB, at40 BLOB, at48 BLOB, at52 BLOB, "
                               "at56 BLOB, at60 BLOB, at64 BLOB, at68 BLOB, at72 BLOB, at80 BLOB, at88 BLOB, at96 BLOB);"));
 
     query.exec(QStringLiteral("CREATE TABLE IF NOT EXISTS version (version TEXT PRIMARY KEY);"));
@@ -84,6 +84,35 @@ QByteArray Db::readCapture(const int &percent) const
     while(query.next())
         return query.value(0).toByteArray();
     return nullptr;
+}
+
+QHash<int, QByteArray>  Db::readCaptures(const QVector<int> &percentages) const
+{
+    QSqlQuery query(_db);
+    QString args = "";
+    QHash<int, QByteArray> result;
+
+    for(auto percentage : percentages)
+    {
+        if(args.length() == 0){
+           args = "SELECT at" + QString::number(percentage);
+        } else {
+            args += ", at" + QString::number(percentage);
+        }
+    }
+    query.exec(args + QStringLiteral(" FROM capture WHERE id = '%1';").arg(_id));
+
+    for(auto percentage : percentages)
+    {
+        result[percentage] = nullptr;
+    }
+    while(query.next()){
+        for(auto percentage : percentages)
+        {
+            result[percentage] = query.value(QStringLiteral("at%").arg(percentage)).toByteArray();
+        }
+    }
+    return result;
 }
 
 void Db::writeCapture(const int &percent, const QByteArray &image) const

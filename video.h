@@ -31,7 +31,6 @@ public:
     QByteArray thumbnail;
     cv::Mat grayThumb [16];
     uint64_t hash [16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    QHash<QString, int> distances;
 
 private slots:
     void getMetadata(const QString &filename);
@@ -40,11 +39,9 @@ private slots:
     uint64_t computePhash(const cv::Mat &input) const;
     QImage minimizeImage(const QImage &image) const;
     QString msToHHMMSS(const int64_t &time) const;
-    int phashSimilarity(const Video *right, const int &hashes);
 
 public slots:
     QImage captureAt(const int &percent, const int &ofDuration=100) const;
-    
 
 signals:
     void acceptVideo(Video *addMe) const;

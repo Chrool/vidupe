@@ -19,6 +19,9 @@ public:
     double _thresholdSSIM = 0.89;
     int _thresholdPhash = 57;
 
+    double _thresholdSSIMMax = 100;
+    int _thresholdPhashMax = 100;
+
     int _differentDurationModifier = 4;
     int _sameDurationModifier = 1;
 };

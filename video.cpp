@@ -16,11 +16,11 @@ Video::Video(const Prefs &prefsParam, const QString &filenameParam) : filename(f
 
 void Video::run()
 {
-    if(!QFileInfo::exists(filename))
-    {
-        emit rejectVideo(this);
-        return;
-    }
+//    if(!QFileInfo::exists(filename))
+//    {
+//        emit rejectVideo(this);
+//        return;
+//    }
 
     Db cache(filename);
     if(!cache.readMetadata(*this))      //check first if video properties are cached
@@ -126,11 +126,13 @@ int Video::takeScreenCaptures(const Db &cache)
     const QVector<int> percentages = thumb.percentages();
     int capture = percentages.count();
     int ofDuration = 100;
+    QHash<int, QByteArray> captures = cache.readCaptures(percentages);
 
     while(--capture >= 0)           //screen captures are taken in reverse order so errors are found early
     {
         QImage frame;
-        QByteArray cachedImage = cache.readCapture(percentages[capture]);
+//        QByteArray cachedImage = cache.readCapture(percentages[capture]);
+        QByteArray cachedImage = captures[percentages[capture]];
         QBuffer captureBuffer(&cachedImage);
         bool writeToCache = false;
 
@@ -169,7 +171,12 @@ int Video::takeScreenCaptures(const Db &cache)
     }
 
     const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;    //if cutEnds mode: separate hash for beginning and end
-    processThumbnail(thumbnail, hashes);
+    try {
+        processThumbnail(thumbnail, hashes);
+    } catch (std::exception &e) {
+        return _failure;
+    }
+
     return _success;
 }
 
@@ -178,7 +185,7 @@ void Video::processThumbnail(QImage &thumbnail, const int &hashes)
     for(int hash=0; hash<hashes; hash++)
     {
         QImage image = thumbnail;
-        int y = (int)hash / 4;
+        int y = hash / 4;
         int x = hash % 4;
         if(_prefs._thumbnails == cutEnds)           //if cutEnds mode: separate thumbnail into first and last frames
             image = thumbnail.copy(x, y, thumbnail.width()/4, thumbnail.height()/4);
@@ -262,41 +269,6 @@ QString Video::msToHHMMSS(const int64_t &time) const
         paddedSeconds = QStringLiteral("0%1").arg(paddedSeconds);
 
     return QStringLiteral("%1:%2:%3.%4").arg(paddedHours, paddedMinutes, paddedSeconds).arg(msecs);
-}
-
-
-
-int Video::phashSimilarity(const Video *right, const int &hashes)
-{
-    if(self->distances.contains(right->filename){
-        return self->distances[right->filename];
-    }     
-    int nearestDistance = 64;
-    for(int leftHash=0; leftHash<hashes; leftHash++){
-        for(int rightHash=0; rightHash<hashes; rightHash++){
-            if(this->hash[leftHash] == 0 && right->hash[rightHash] == 0)
-                continue;
-
-            uint64_t differentBits = this->hash[leftHash] ^ right->hash[rightHash];    //XOR to value (only ones for differing bits)
-            int distance = 64;
-            while(differentBits)
-            {
-                differentBits &= differentBits - 1;                 //count number of bits of value
-                distance--;
-            }
-
-            if( qAbs(this->duration - right->duration) <= 1000 )
-                _durationModifier = 0 + _prefs._sameDurationModifier;               //lower distance if both durations within 1s
-            else
-                _durationModifier = 0 - _prefs._differentDurationModifier;          //raise distance if both durations differ 1s
-
-            distance = distance + _durationModifier;
-            nearestDistance = nearestDistance > distance ? distance : nearestDistance;
-        }
-    }
-
-    self->distances[right->filename] = nearestDistance > 64? 64 : distance;
-    return nearestDistance > 64? 64 : nearestDistance;
 }
 
 QImage Video::captureAt(const int &percent, const int &ofDuration) const

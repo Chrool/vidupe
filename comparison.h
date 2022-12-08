@@ -6,8 +6,6 @@
 #include <QUrl>
 #include <QLabel>
 #include "video.h"
-#include <smmintrin.h>
-#include <stdint.h>
 
 namespace Ui { class Comparison; }
 
@@ -41,10 +39,6 @@ private:
     QPixmap _rightZoomed;
     int _rightW = 0;
     int _rightH = 0;
-    const __m128i Z = _mm_set1_epi8(0x0);
-    const __m128i F = _mm_set1_epi8(0xF);
-    //Vector with pre-calculated bit count:
-    const __m128i T = _mm_setr_epi8(0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4);
 
 public slots:
     void reportMatchingVideos();
@@ -54,7 +48,7 @@ private slots:
     void on_prevVideo_clicked();
     void on_nextVideo_clicked();
     bool bothVideosMatch(const Video *left, const Video *right);
-    int phashSimilarity(const Video *left, const Video *right, const int &nthHash);
+    int phashSimilarity(const Video *left, const Video *right, const int &leftHash, const int &rightHash);
 
     void showVideo(const QString &side) const;
     QString readableDuration(const int64_t &milliseconds) const;
@@ -84,20 +78,26 @@ private slots:
     void on_rightMove_clicked() { moveVideo(_videos[_rightVideo]->filename, _videos[_leftVideo]->filename); }
     void moveVideo(const QString &from, const QString &to);
     void on_swapFilenames_clicked() const;
+    void on_swapFolders_clicked() const;
+    void on_swapFilesToFolders_clicked() const;
+
 
     void on_thresholdSlider_valueChanged(const int &value);
+    void on_thresholdSliderMax_valueChanged(const int &value);
+
     void resizeEvent(QResizeEvent *event);
     void wheelEvent(QWheelEvent *event);
 
     double sigma(const cv::Mat &m, const int &i, const int &j, const int &block_size) const;
     double covariance(const cv::Mat &m0, const cv::Mat &m1, const int &i, const int &j, const int &block_size) const;
     double ssim(const cv::Mat &m0, const cv::Mat &m1, const int &block_size) const;
-    uint64_t BitCount(const uint8_t * src, size_t size)
 
 signals:
     void sendStatusMessage(const QString &message) const;
     void switchComparisonMode(const int &mode) const;
     void adjustThresholdSlider(const int &value) const;
+    void adjustThresholdSliderMax(const int &value) const;
+
 };
 
 

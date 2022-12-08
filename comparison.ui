@@ -68,7 +68,7 @@
      <item>
       <widget class="QLabel" name="label">
        <property name="text">
-        <string>Comparison threshold:</string>
+        <string>Comparison Min:</string>
        </property>
       </widget>
      </item>
@@ -86,17 +86,24 @@
       </widget>
      </item>
      <item>
-      <spacer name="horizontalSpacer_7">
+      <widget class="QLabel" name="label_2">
+       <property name="text">
+        <string>Comparison Max</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSlider" name="thresholdSliderMax">
+       <property name="minimum">
+        <number>1</number>
+       </property>
+       <property name="maximum">
+        <number>100</number>
+       </property>
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
        </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
+      </widget>
      </item>
     </layout>
    </item>
@@ -808,9 +815,23 @@
       </spacer>
      </item>
      <item>
+      <widget class="QPushButton" name="swapFilesToFolders">
+       <property name="text">
+        <string>f2f</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="swapFilenames">
        <property name="text">
-        <string>Swap filenames</string>
+        <string>file</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="swapFolders">
+       <property name="text">
+        <string>Folders</string>
        </property>
       </widget>
      </item>
