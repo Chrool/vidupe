@@ -289,3 +289,38 @@ QImage Video::captureAt(const int &percent, const int &ofDuration) const
     QFile::remove(screenshot);
     return img;
 }
+
+void Video::getBrightest(QString &filename)
+{
+    const char* videofilename = "StopMoti2001.mpeg";
+
+    //cv::VideoCapture cap(filename.toStdString()); // open a video file
+    cv::VideoCapture cap(videofilename); // open a video file
+    if(!cap.isOpened())  // check if succeeded
+    {
+        std::cout << "file " << filename.toStdString() << " not found or could not be opened" << std::endl;
+        return;
+    }
+
+    unsigned long counter = 0;
+
+    cv::Mat frame;
+    // read frames until end of video:
+    while(cap.read(frame))
+    {
+
+        // display frame
+        //cv::imshow("output", frame); cv::waitKey(25);   // remove this line if you don't need the live output
+
+
+        // adjust the filename by incrementing a counter
+        std::stringstream filename (std::stringstream::in | std::stringstream::out);
+        filename << "image" <<  counter++ << ".jpg";
+
+        std::cout << "writing " << filename.str().c_str() << " to disk" << std::endl;
+
+        // save frame to file: image0.jpg, image1.jpg, and so on...
+        //cv::imwrite(filename.str().c_str(),frame);
+
+    }
+}

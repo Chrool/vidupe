@@ -30,8 +30,10 @@ FORMS += \
 
 LIBS += \
     $$PWD/bin/libopencv_core347.dll \
-    $$PWD/bin/libopencv_imgproc347.dll
-
+    $$PWD/bin/libopencv_imgproc347.dll\
+    $$PWD/bin/libopencv_core347.dll\
+    $$PWD/bin/libopencv_video347.dll\
+    $$PWD/bin/libopencv_videoio347.dll
 RC_ICONS = vidupe16.ico
 
 VERSION = 1.211

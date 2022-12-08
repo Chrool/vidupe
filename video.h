@@ -7,8 +7,14 @@
 #include <QBuffer>
 #include <QTemporaryDir>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/videoio.hpp>
+#include "opencv2/video.hpp"
+#include <opencv2/highgui.hpp>
 #include "prefs.h"
 #include "db.h"
+#include <stdio.h>
+#include <iostream>
 
 class Video : public QObject, public QRunnable
 {
@@ -39,6 +45,7 @@ private slots:
     uint64_t computePhash(const cv::Mat &input) const;
     QImage minimizeImage(const QImage &image) const;
     QString msToHHMMSS(const int64_t &time) const;
+    void getBrightest(QString &filename);
 
 public slots:
     QImage captureAt(const int &percent, const int &ofDuration=100) const;
