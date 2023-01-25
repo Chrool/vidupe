@@ -16,12 +16,12 @@ public:
 private:
     QSqlDatabase _db;
     QString _connection;
-    QString _id;
-    QDateTime _modified;
+    //QString _id;
+    //QDateTime _modified;
 
 public:
     //return md5 hash of parameter's file, or (as convinience) md5 hash of the file given to constructor
-    QString uniqueId(const QString &filename=QStringLiteral("")) const;
+    static QString uniqueId(const QString &filename, const QDateTime &dateMod, const QString &id);
 
     //constructor creates a database file if there is none already
     void createTables() const;
@@ -33,16 +33,20 @@ public:
     void writeMetadata(const Video &video) const;
 
     //returns screen capture if it was cached, else return null ptr
-    QByteArray readCapture(const int &percent) const;
+    QByteArray readCapture(const QString &id, const int &percent) const;
 
     //returns screen capture if it was cached, else return null ptr
-    QHash<int, QByteArray>  readCaptures(const QVector<int> &percentages) const;
+    QHash<int, QByteArray> readCaptures(const QString &id, const QVector<int> &percentages) const;
+
+    QHash<int, QByteArray> readCapturesOfVideos(const QVector<QString> &ids, const QVector<int> &percentages) const;
 
     //save image in cache
-    void writeCapture(const int &percent, const QByteArray &image) const;
+    void writeCapture(const QString &id, const int &percent, const QByteArray &image) const;
 
     //returns false if id not cached or could not be removed
     bool removeVideo(const QString &id) const;
+
+    void populateMetadatas(const QHash<QString, Video *> _everyVideo) const;
 };
 
 #endif // DB_H

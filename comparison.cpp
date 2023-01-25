@@ -397,7 +397,7 @@ void Comparison::deleteVideo(const int &side)
     const QString filename = _videos[side]->filename;
     const QString onlyFilename = filename.right(filename.length() - filename.lastIndexOf("/") - 1);
     const Db cache(filename);                       //generate unique id before file has been deleted
-    const QString id = cache.uniqueId();
+    const QString id = cache.uniqueId(filename, _videos[side]->modified, "");
 
     if(!QFileInfo::exists(filename))                //video was already manually deleted, skip to next
     {
@@ -450,12 +450,14 @@ void Comparison::on_swapFilenames_clicked() const
     const QFileInfo leftVideoFile(_videos[_leftVideo]->filename);
     const QString leftPathname = leftVideoFile.absolutePath();
     const QString oldLeftFilename = leftVideoFile.fileName();
+    const QDateTime oldLeftDatetime = _videos[_leftVideo]->modified;
     const QString oldLeftNoExtension = oldLeftFilename.left(oldLeftFilename.lastIndexOf("."));
     const QString leftExtension = oldLeftFilename.right(oldLeftFilename.length() - oldLeftFilename.lastIndexOf("."));
 
     const QFileInfo rightVideoFile(_videos[_rightVideo]->filename);
     const QString rightPathname = rightVideoFile.absolutePath();
     const QString oldRightFilename = rightVideoFile.fileName();
+    const QDateTime oldRightDatetime = _videos[_rightVideo]->modified;
     const QString oldRightNoExtension = oldRightFilename.left(oldRightFilename.lastIndexOf("."));
     const QString rightExtension = oldRightFilename.right(oldRightFilename.length() - oldRightFilename.lastIndexOf("."));
 
@@ -478,8 +480,8 @@ void Comparison::on_swapFilenames_clicked() const
     ui->rightFileName->setText(newRightFilename);
 
     Db cache(_videos[_leftVideo]->filename);
-    cache.removeVideo(cache.uniqueId(oldLeftFilename));             //remove both videos from cache
-    cache.removeVideo(cache.uniqueId(oldRightFilename));
+    cache.removeVideo(cache.uniqueId(oldLeftFilename, oldLeftDatetime, ""));             //remove both videos from cache
+    cache.removeVideo(cache.uniqueId(oldRightFilename, oldRightDatetime, ""));
 }
 
 //should swap folder names
@@ -491,6 +493,8 @@ void Comparison::on_swapFolders_clicked() const
     QDir leftDir = leftVideoFile.dir();
     const QString leftDirName = leftDir.dirName();
     const QString leftDirPath = leftDir.absolutePath();
+    const QDateTime oldLeftDatetime = _videos[_leftVideo]->modified;
+
 
     leftDir.cdUp();
 
@@ -500,6 +504,8 @@ void Comparison::on_swapFolders_clicked() const
     QDir rightDir = rightVideoFile.dir();
     const QString rightDirName = rightDir.dirName();
     const QString rightDirPath = rightDir.absolutePath();
+    const QDateTime oldRightDatetime = _videos[_rightVideo]->modified;
+
 
     rightDir.cdUp();
 
@@ -521,8 +527,8 @@ void Comparison::on_swapFolders_clicked() const
     ui->rightPathName->setText(newRightPath);
 
     Db cache(_videos[_leftVideo]->filename);
-    cache.removeVideo(cache.uniqueId(leftFilename));             //remove both videos from cache
-    cache.removeVideo(cache.uniqueId(rightFilename));
+    cache.removeVideo(cache.uniqueId(leftFilename, oldLeftDatetime, ""));             //remove both videos from cache
+    cache.removeVideo(cache.uniqueId(rightFilename, oldRightDatetime, ""));
 }
 
 //should swap folder names
@@ -533,6 +539,7 @@ void Comparison::on_swapFilesToFolders_clicked() const
     const QString leftFilename = leftVideoFile.fileName();
     const QString leftNoExtension = leftFilename.left(leftFilename.lastIndexOf("."));
     const QString leftExtension = leftFilename.right(leftFilename.length() - leftFilename.lastIndexOf("."));
+    const QDateTime oldLeftDatetime = _videos[_leftVideo]->modified;
 
     QDir leftDir = leftVideoFile.dir();
     const QString leftDirName = leftDir.dirName();
@@ -545,7 +552,7 @@ void Comparison::on_swapFilesToFolders_clicked() const
     const QString rightFilename = rightVideoFile.fileName();
     const QString rightNoExtension = rightFilename.left(rightFilename.lastIndexOf("."));
     const QString rightExtension = rightFilename.right(rightFilename.length() - rightFilename.lastIndexOf("."));
-
+    const QDateTime oldRightDatetime = _videos[_rightVideo]->modified;
 
     QDir rightDir = rightVideoFile.dir();
     const QString rightDirName = rightDir.dirName();
@@ -584,8 +591,8 @@ void Comparison::on_swapFilesToFolders_clicked() const
     ui->rightFileName->setText(newRightFilenameAfterRename);
 
     Db cache(_videos[_leftVideo]->filename);
-    cache.removeVideo(cache.uniqueId(leftFilename));             //remove both videos from cache
-    cache.removeVideo(cache.uniqueId(rightFilename));
+    cache.removeVideo(cache.uniqueId(leftFilename, oldLeftDatetime, ""));             //remove both videos from cache
+    cache.removeVideo(cache.uniqueId(rightFilename, oldRightDatetime, ""));
 }
 
 void Comparison::on_thresholdSlider_valueChanged(const int &value)

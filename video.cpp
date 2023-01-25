@@ -4,9 +4,12 @@
 Prefs Video::_prefs;
 int Video::_jpegQuality = _okJpegQuality;
 
-Video::Video(const Prefs &prefsParam, const QString &filenameParam) : filename(filenameParam)
+Video::Video(const Prefs &prefsParam, const QString &filenameParam, const QDateTime &dateModParam) : filename(filenameParam)
 {
     _prefs = prefsParam;
+    modified = dateModParam;
+    filename = filenameParam;
+    id = Db::uniqueId(filenameParam, modified, "");
     if(_prefs._numberOfVideos > _hugeAmountVideos)       //save memory to avoid crash due to 32 bit limit
         _jpegQuality = _lowJpegQuality;
 
@@ -16,17 +19,12 @@ Video::Video(const Prefs &prefsParam, const QString &filenameParam) : filename(f
 
 void Video::run()
 {
-//    if(!QFileInfo::exists(filename))
-//    {
-//        emit rejectVideo(this);
-//        return;
-//    }
-
-    Db cache(filename);
-    if(!cache.readMetadata(*this))      //check first if video properties are cached
+    Db cache(id);
+    if(!cachedMetadata)      //check first if video properties are cached
     {
         getMetadata(filename);          //if not, read them with ffmpeg
         cache.writeMetadata(*this);
+        cachedMetadata = false;
     }
     if(width == 0 || height == 0 || duration == 0)
     {
@@ -116,7 +114,6 @@ void Video::getMetadata(const QString &filename)
 
     const QFileInfo videoFile(filename);
     size = videoFile.size();
-    modified = videoFile.lastModified();
 }
 
 int Video::takeScreenCaptures(const Db &cache)
@@ -126,7 +123,8 @@ int Video::takeScreenCaptures(const Db &cache)
     const QVector<int> percentages = thumb.percentages();
     int capture = percentages.count();
     int ofDuration = 100;
-    QHash<int, QByteArray> captures = cache.readCaptures(percentages);
+
+    QHash<int, QByteArray> captures = cache.readCaptures(id, percentages);
 
     while(--capture >= 0)           //screen captures are taken in reverse order so errors are found early
     {
@@ -143,6 +141,7 @@ int Video::takeScreenCaptures(const Db &cache)
         }
         else
         {
+            cachedCaptures = false;
             frame = captureAt(percentages[capture], ofDuration);
             if(frame.isNull())                                  //taking screen capture may fail if video is broken
             {
@@ -166,7 +165,7 @@ int Video::takeScreenCaptures(const Db &cache)
         {
             frame = minimizeImage(frame);
             frame.save(&captureBuffer, QByteArrayLiteral("JPG"), _okJpegQuality);
-            cache.writeCapture(percentages[capture], cachedImage);
+            cache.writeCapture(id, percentages[capture], cachedImage);
         }
     }
 

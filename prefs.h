@@ -12,7 +12,7 @@ public:
     QWidget *_mainwPtr = nullptr;               //pointer to MainWindow, for connecting signals to it's slots
 
     int _comparisonMode = _PHASH;
-    int _thumbnails = cutEnds;
+    int _thumbnails = thumb12;
     int _numberOfVideos = 0;
     int _ssimBlockSize = 16;
 
@@ -24,6 +24,7 @@ public:
 
     int _differentDurationModifier = 4;
     int _sameDurationModifier = 1;
+    int _cacheLoadPageSize = 300;
 };
 
 #endif // PREFS_H

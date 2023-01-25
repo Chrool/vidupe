@@ -21,10 +21,11 @@ class Video : public QObject, public QRunnable
     Q_OBJECT
 
 public:
-    Video(const Prefs &prefsParam, const QString &filenameParam);
+    Video(const Prefs &prefsParam, const QString &filenameParam, const QDateTime &dateMod);
     void run();
 
     QString filename;
+    QString id;
     int64_t size = 0;
     QDateTime modified;
     int64_t duration = 0;
@@ -37,6 +38,8 @@ public:
     QByteArray thumbnail;
     cv::Mat grayThumb [16];
     uint64_t hash [16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    bool cachedMetadata = false;
+    bool cachedCaptures = true;
 
 private slots:
     void getMetadata(const QString &filename);

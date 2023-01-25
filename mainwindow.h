@@ -20,7 +20,7 @@ private:
     Ui::MainWindow *ui;
 
     QVector<Video *> _videoList;
-    QStringList _everyVideo;
+    QHash<QString, Video *> _everyVideo;
     QStringList _rejectedVideos;
     QStringList _extensionList;
 
@@ -35,6 +35,7 @@ private slots:
     void dragEnterEvent(QDragEnterEvent *event) { if(event->mimeData()->hasUrls()) event->acceptProposedAction(); }
     void dropEvent(QDropEvent *event);
     void loadExtensions();
+    void loadLocations();
     bool detectffmpeg() const;
 
     void setComparisonMode(const int &mode) { if(mode == _prefs._PHASH) ui->selectPhash->click(); else ui->selectSSIM->click(); ui->directoryBox->setFocus(); }

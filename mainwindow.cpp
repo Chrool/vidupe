@@ -24,6 +24,7 @@ MainWindow::MainWindow() : ui(new Ui::MainWindow)
 
     deleteTemporaryFiles();
     loadExtensions();
+    loadLocations();
     detectffmpeg();
     calculateThreshold(ui->thresholdSlider->sliderPosition());
 
@@ -88,6 +89,28 @@ void MainWindow::loadExtensions()
             continue;
         _extensionList << line.replace(QRegExp("\\*?\\."), "*.").split(QStringLiteral(" "));
         addStatusMessage(line.remove(QStringLiteral("*")));
+    }
+    file.close();
+}
+
+void MainWindow::loadLocations()
+{
+    QFile file(QStringLiteral("%1/locations.ini").arg(QApplication::applicationDirPath()));
+    if(!file.open(QIODevice::ReadOnly))
+    {
+        addStatusMessage(QStringLiteral("Error: locations.ini not found. No video file will be searched."));
+        return;
+    }
+    addStatusMessage(QStringLiteral("Supported file extensions:"));
+    QTextStream text(&file);
+    while(!text.atEnd())
+    {
+        QString line = text.readLine();
+        if(line.startsWith(QStringLiteral("#")) || line.isEmpty())
+            continue;
+        ui->directoryBox->insert(line);
+        ui->directoryBox->setFocus();
+        break;
     }
     file.close();
 }
@@ -213,16 +236,24 @@ void MainWindow::findVideos(QDir &dir)
             return;
         const QFile file(iter.next());
         const QString filename = file.fileName();
+        const QFileInfo fileInfo(filename);
 
-        bool duplicate = false;                 //don't want duplicates of same file
-        for(const auto &alreadyAddedFile : _everyVideo)
-            if(filename.toLower() == alreadyAddedFile.toLower())
-            {
-                duplicate = true;
-                break;
-            }
-        if(!duplicate)
-            _everyVideo << filename;
+        const QDateTime dateMod = fileInfo.lastModified();
+        Video *video = new Video(_prefs, filename, dateMod);
+        const QString uniqueId = video->id;
+
+//        bool duplicate = false;                 //don't want duplicates of same file
+        if(!_everyVideo.contains(uniqueId)){
+            _everyVideo[uniqueId] = video;
+        }
+//        for(const auto &alreadyAddedFile : _everyVideo.keys())
+//            if(uniqueId.toLower() == alreadyAddedFile.toLower())
+//            {
+//                duplicate = true;
+//                break;
+//            }
+//        if(!duplicate)
+
 
         ui->statusBar->showMessage(QDir::toNativeSeparators(filename), 10);
         QApplication::processEvents();
@@ -247,8 +278,13 @@ void MainWindow::processVideos()
     }
     else return;
 
+    Db setup("main");
+    setup.createTables();
+
+    setup.populateMetadatas(_everyVideo);
+//Do batch cache retrieval here eventually
     QThreadPool threadPool;
-    for(const auto &filename : _everyVideo)
+    for(const auto &videoTask : _everyVideo.values())
     {
         if(_userPressedStop)
         {
@@ -258,7 +294,7 @@ void MainWindow::processVideos()
         while(threadPool.activeThreadCount() == threadPool.maxThreadCount())
             QApplication::processEvents();          //avoid blocking signals in event loop
 
-        auto *videoTask = new Video(_prefs, filename);
+        //auto *videoTask = _everyVideo[filename];
         videoTask->setAutoDelete(false);
         threadPool.start(videoTask);
     }
@@ -297,8 +333,7 @@ void MainWindow::addStatusMessage(const QString &message) const
 
 void MainWindow::addVideo(Video *addMe)
 {
-    addStatusMessage(QStringLiteral("[%1] %2").arg(QTime::currentTime().toString(),
-                                                   QDir::toNativeSeparators(addMe->filename)));
+    addStatusMessage(QStringLiteral("[%1] %2 - %3 - %4").arg(QTime::currentTime().toString()).arg( QDir::toNativeSeparators(addMe->filename)).arg( addMe->cachedMetadata).arg( addMe->cachedCaptures));
     ui->progressBar->setValue(ui->progressBar->value() + 1);
     ui->processedFiles->setText(QStringLiteral("%1/%2").arg(ui->progressBar->value()).arg(ui->progressBar->maximum()));
     _videoList << addMe;
