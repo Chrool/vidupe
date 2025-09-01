@@ -20,17 +20,11 @@
       <number>0</number>
      </property>
      <item>
-      <spacer name="horizontalSpacer_6">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
+      <widget class="QPushButton" name="preprocessVideo">
+       <property name="text">
+        <string>preprocess</string>
        </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
+      </widget>
      </item>
      <item>
       <widget class="QRadioButton" name="selectPhash">
@@ -816,6 +810,9 @@
      </item>
      <item>
       <widget class="QPushButton" name="swapFilesToFolders">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="text">
         <string>f2f</string>
        </property>
@@ -830,6 +827,9 @@
      </item>
      <item>
       <widget class="QPushButton" name="swapFolders">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="text">
         <string>Folders</string>
        </property>

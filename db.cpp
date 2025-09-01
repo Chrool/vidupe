@@ -3,12 +3,15 @@
 #include <QSqlQuery>
 #include "db.h"
 #include "video.h"
+#include <QSqlError>
 
-Db::Db(const QString &connectionParam)
+Db::Db(const QString &connectionParam, QWidget *mainwPtr)
 {
     _connection = connectionParam;       //connection name is unique (generated from full path+filename)
 
     const QString dbfilename = QStringLiteral("%1/cache.db").arg(QApplication::applicationDirPath());
+    connect(this, SIGNAL(sendStatusMessage(const QString &)), mainwPtr, SLOT(addStatusMessage(const QString &)));
+
     _db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), _connection);
     _db.setDatabaseName(dbfilename);
     _db.open();
@@ -34,7 +37,7 @@ void Db::createTables() const
 
     query.exec(QStringLiteral("CREATE TABLE IF NOT EXISTS metadata (id TEXT PRIMARY KEY, "
                               "size INTEGER, duration INTEGER, bitrate INTEGER, framerate REAL, "
-                              "codec TEXT, audio TEXT, width INTEGER, height INTEGER);"));
+                              "codec TEXT, audio TEXT, width INTEGER, height INTEGER, access_date INTEGER);"));
 
     query.exec(QStringLiteral("CREATE TABLE IF NOT EXISTS capture (id TEXT PRIMARY KEY, "
                               " at8 BLOB, at16 BLOB, at24 BLOB, at32 BLOB, at36 BLOB, at40 BLOB, at48 BLOB, at52 BLOB, "
@@ -64,14 +67,18 @@ bool Db::readMetadata(Video &video) const
     }
     return false;
 }
-
+/*
 //make hashmap
 void Db::populateMetadatas(const QHash<QString, Video *> _everyVideo) const
 {
     QSqlQuery query(_db);
     QString inArgs = "";
     int count = 0;
-    const int limit = 1000;
+    const int limit = 5000;
+    int now = QDateTime::currentSecsSinceEpoch();
+    //delete from capture where id in (select  capture.id from capture left join metadata on metadata.id = capture.id where metadata.id is null    )
+    //run compact databsae in menu
+    QString updateQuery = QStringLiteral("UPDATE metadata set access_date = '%1' WHERE id in ").arg(now);
 
     QHashIterator<QString, Video *> i(_everyVideo);
 
@@ -84,7 +91,8 @@ void Db::populateMetadatas(const QHash<QString, Video *> _everyVideo) const
         }
         count++;
         if(count == limit || !i.hasNext()){
-             query.exec(QStringLiteral("SELECT * FROM metadata WHERE id in (%1);").arg(inArgs));
+            query.exec(updateQuery + QStringLiteral("(%1);").arg(inArgs));
+            query.exec(QStringLiteral("SELECT * FROM metadata WHERE id in (%1);").arg(inArgs));
 
              while(query.next()){
                  const QString id = query.value("id").toString();
@@ -100,16 +108,154 @@ void Db::populateMetadatas(const QHash<QString, Video *> _everyVideo) const
                  video->cachedMetadata = true;
              }
              count = 0;
+             inArgs = "";
+        }
+    }
+}
+*/
+
+void Db::populateMetadatas(const QHash<QString, Video *> _everyVideo) const
+{
+    const int limit = 5000;
+    int now = QDateTime::currentSecsSinceEpoch();
+
+    QSqlQuery updateQuery(_db);
+    QSqlQuery selectQuery(_db);
+
+    QStringList batchIds;
+    QHashIterator<QString, Video *> i(_everyVideo);
+
+    while (i.hasNext()) {
+        i.next();
+        batchIds << i.key();
+
+        if (batchIds.size() == limit || !i.hasNext()) {
+            // Prepare placeholders
+            QStringList quotedItems;
+            for (const QString &item : batchIds)
+                quotedItems << QString("'%1'").arg(item);
+
+            QString inClause = quotedItems.join(", ");
+
+            // Update access_date
+            updateQuery.prepare("UPDATE metadata SET access_date = " + QString(now) + " WHERE id IN (" + inClause + ")");
+            //updateQuery.addBindValue(now);
+
+            if (!updateQuery.exec()) {
+                qWarning() << "Update failed:" << updateQuery.lastError().text();
+                emit sendStatusMessage(QString("Update failed: %1").arg(updateQuery.lastError().text()));
+            }
+
+            // Select metadata
+            QString select = "SELECT * FROM metadata WHERE id IN (" + inClause + ")";
+            selectQuery.prepare(select);
+
+            if (!selectQuery.exec()) {
+                qWarning() << "Select failed:" << selectQuery.lastError().text();
+                emit sendStatusMessage(QString("Select failed: %1").arg(selectQuery.lastError().text()));
+            } else {
+                while (selectQuery.next()) {
+                    QString id = selectQuery.value("id").toString();
+                    if (!_everyVideo.contains(id)){
+                        qWarning() << "Id not found:" << id;
+                        continue;
+                    }
+
+                    Video *video = _everyVideo[id];
+                    video->size = selectQuery.value("size").toLongLong();
+                    video->duration = selectQuery.value("duration").toLongLong();
+                    video->bitrate = selectQuery.value("bitrate").toInt();
+                    video->framerate = selectQuery.value("framerate").toDouble();
+                    video->codec = selectQuery.value("codec").toString();
+                    video->audio = selectQuery.value("audio").toString();
+                    video->width = static_cast<short>(selectQuery.value("width").toInt());
+                    video->height = static_cast<short>(selectQuery.value("height").toInt());
+                    video->cachedMetadata = true;
+                }
+            }
+
+            batchIds.clear();
         }
     }
 }
 
-void Db::writeMetadata(const Video &video) const
+//make hashmap
+void Db::populateCaptures(const QHash<QString, Video *> _everyVideo, const QVector<int> &percentages) const
 {
     QSqlQuery query(_db);
-    query.exec(QStringLiteral("INSERT OR REPLACE INTO metadata VALUES('%1',%2,%3,%4,%5,'%6','%7',%8,%9);")
-               .arg(video.id).arg(video.size).arg(video.duration).arg(video.bitrate).arg(video.framerate)
-               .arg(video.codec).arg(video.audio).arg(video.width).arg(video.height));
+    QString inArgs = "";
+    QString args = "";
+    int count = 0;
+    const int limit = 2000;
+    int overallCount = 0;
+
+    QHashIterator<QString, Video *> i(_everyVideo);
+    for(auto percentage : percentages)
+    {
+        if(args.length() == 0){
+           args = "SELECT id, at" + QString::number(percentage);
+        } else {
+            args += ", at" + QString::number(percentage);
+        }
+    }
+
+    while (i.hasNext()) {
+        i.next();
+        if(inArgs.length() == 0){
+           inArgs = QStringLiteral("'%1'").arg(i.key());
+        } else {
+            inArgs += QStringLiteral(", '%1'").arg(i.key());
+        }
+
+        count++;
+        overallCount++;
+        if(count == limit || !i.hasNext()){
+            const QString query_string = args + QStringLiteral(" FROM capture WHERE id in (%1);").arg(inArgs);
+
+             query.exec(query_string);
+
+             while(query.next()){
+                 const QString id = query.value("id").toString();
+                 Video *video = _everyVideo[id];
+                 for(auto percentage : percentages)
+                 {
+                      video->captures[percentage] = nullptr;
+                 }
+                 for(auto percentage : percentages)
+                 {
+                     video->captures[percentage] = query.value(QStringLiteral("at%1").arg(percentage)).toByteArray();
+                 }
+             }
+             count = 0;
+             inArgs = "";
+             query.clear();
+        }
+    }
+}
+void Db::writeMetadata(const Video &video) const
+{
+    int now = QDateTime::currentSecsSinceEpoch();
+
+    QSqlQuery query(_db);
+    query.prepare("INSERT OR REPLACE INTO metadata "
+                  "(id, size, duration, bitrate, framerate, codec, audio, width, height, access_date) "
+                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+    query.addBindValue(video.id);
+    query.addBindValue(video.size);
+    query.addBindValue(video.duration);
+    query.addBindValue(video.bitrate);
+    query.addBindValue(video.framerate);
+    query.addBindValue(video.codec);
+    query.addBindValue(video.audio);
+    query.addBindValue(video.width);
+    query.addBindValue(video.height);
+    query.addBindValue(now);
+
+    if (!query.exec()) {
+        qWarning() << "Failed to insert metadata:" << query.lastError().text();
+        emit sendStatusMessage(QString("Select failed: %1").arg(query.lastError().text()));
+    }
 }
 
 QByteArray Db::readCapture(const QString &id, const int &percent) const

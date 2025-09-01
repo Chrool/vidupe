@@ -40,6 +40,7 @@ public:
     uint64_t hash [16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     bool cachedMetadata = false;
     bool cachedCaptures = true;
+    QHash<int, QByteArray> captures;
 
 private slots:
     void getMetadata(const QString &filename);

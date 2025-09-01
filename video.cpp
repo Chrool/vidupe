@@ -19,7 +19,7 @@ Video::Video(const Prefs &prefsParam, const QString &filenameParam, const QDateT
 
 void Video::run()
 {
-    Db cache(id);
+    Db cache(id,  _prefs._mainwPtr);
     if(!cachedMetadata)      //check first if video properties are cached
     {
         getMetadata(filename);          //if not, read them with ffmpeg
@@ -124,7 +124,8 @@ int Video::takeScreenCaptures(const Db &cache)
     int capture = percentages.count();
     int ofDuration = 100;
 
-    QHash<int, QByteArray> captures = cache.readCaptures(id, percentages);
+//    if(!cachedCaptures)
+//    captures = cache.readCaptures(id, percentages);
 
     while(--capture >= 0)           //screen captures are taken in reverse order so errors are found early
     {

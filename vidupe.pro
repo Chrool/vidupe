@@ -3,11 +3,15 @@ TEMPLATE = app
 
 QT += core gui widgets sql
 
-QMAKE_LFLAGS += -Wl,--large-address-aware
+#QMAKE_LFLAGS += -Wl,--large-address-aware
 QMAKE_CXXFLAGS_RELEASE -= -O
 QMAKE_CXXFLAGS_RELEASE -= -O1
 QMAKE_CXXFLAGS_RELEASE -= -O2
 QMAKE_CXXFLAGS_RELEASE *= -O3
+QMAKE_CXXFLAGS += -fopenmp
+QMAKE_CXXFLAGS_RELEASE += -fopenmp
+QMAKE_LFLAGS += -fopenmp
+QMAKE_LFLAGS_RELEASE += -fopenmp
 
 HEADERS += \
     mainwindow.h \
@@ -28,12 +32,20 @@ FORMS += \
     mainwindow.ui \
     comparison.ui
 
+#LIBS += \
+#    $$PWD/bin/libopencv_core347.dll \
+#    $$PWD/bin/libopencv_imgproc347.dll\
+#    $$PWD/bin/libopencv_core347.dll\
+#    $$PWD/bin/libopencv_video347.dll\
+#    $$PWD/bin/libopencv_videoio347.dll
+
+
 LIBS += \
-    $$PWD/bin/libopencv_core347.dll \
-    $$PWD/bin/libopencv_imgproc347.dll\
-    $$PWD/bin/libopencv_core347.dll\
-    $$PWD/bin/libopencv_video347.dll\
-    $$PWD/bin/libopencv_videoio347.dll
+    $$PWD/bin64/libopencv_core348.dll \
+    $$PWD/bin64/libopencv_imgproc348.dll\
+    $$PWD/bin64/libopencv_core348.dll\
+    $$PWD/bin64/libopencv_video348.dll\
+    $$PWD/bin64/libopencv_videoio348.dll
 RC_ICONS = vidupe16.ico
 
 VERSION = 1.211

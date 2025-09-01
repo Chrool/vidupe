@@ -34,7 +34,7 @@ MainWindow::MainWindow() : ui(new Ui::MainWindow)
     Thumbnail thumb;
     for(int i=0; i<thumb.countModes(); i++)
         ui->selectThumbnails->addItem(thumb.modeName(i));
-    ui->selectThumbnails->setCurrentIndex(7);
+    ui->selectThumbnails->setCurrentIndex(6);
 
     for(int i=0; i<=5; i++)
     {
@@ -278,10 +278,13 @@ void MainWindow::processVideos()
     }
     else return;
 
-    Db setup("main");
+    Db setup("main",  this);
     setup.createTables();
 
     setup.populateMetadatas(_everyVideo);
+    Thumbnail thumb(_prefs._thumbnails);
+    setup.populateCaptures(_everyVideo, thumb.percentages());
+
 //Do batch cache retrieval here eventually
     QThreadPool threadPool;
     for(const auto &videoTask : _everyVideo.values())
@@ -333,7 +336,7 @@ void MainWindow::addStatusMessage(const QString &message) const
 
 void MainWindow::addVideo(Video *addMe)
 {
-    addStatusMessage(QStringLiteral("[%1] %2 - %3 - %4").arg(QTime::currentTime().toString()).arg( QDir::toNativeSeparators(addMe->filename)).arg( addMe->cachedMetadata).arg( addMe->cachedCaptures));
+    addStatusMessage(QStringLiteral("[%1] %2 - %3 - %4 - %5").arg(QTime::currentTime().toString()).arg( QDir::toNativeSeparators(addMe->filename)).arg( addMe->cachedMetadata).arg( addMe->cachedCaptures).arg(addMe->id));
     ui->progressBar->setValue(ui->progressBar->value() + 1);
     ui->processedFiles->setText(QStringLiteral("%1/%2").arg(ui->progressBar->value()).arg(ui->progressBar->maximum()));
     _videoList << addMe;

@@ -2,6 +2,7 @@
 #include <QWheelEvent>
 #include "comparison.h"
 #include "ui_comparison.h"
+#include <omp.h>
 
 Comparison::Comparison(const QVector<Video *> &videosParam, const Prefs &prefsParam) :
     QDialog(prefsParam._mainwPtr, Qt::Window), _videos(videosParam), _prefs(prefsParam)
@@ -12,7 +13,7 @@ Comparison::Comparison(const QVector<Video *> &videosParam, const Prefs &prefsPa
     connect(this, SIGNAL(sendStatusMessage(const QString &)), _prefs._mainwPtr, SLOT(addStatusMessage(const QString &)));
     connect(this, SIGNAL(switchComparisonMode(const int &)),  _prefs._mainwPtr, SLOT(setComparisonMode(const int &)));
     connect(this, SIGNAL(adjustThresholdSlider(const int &)), _prefs._mainwPtr, SLOT(on_thresholdSlider_valueChanged(const int &)));
-    connect(this, SIGNAL(adjustThresholdSliderMax(const int &)), _prefs._mainwPtr, SLOT(on_thresholdSliderMax_valueChanged(const int &)));
+    //connect(this, SIGNAL(adjustThresholdSliderMax(const int &)), _prefs._mainwPtr, SLOT(on_thresholdSliderMax_valueChanged(const int &)));
 
     if(_prefs._comparisonMode == _prefs._SSIM)
         ui->selectSSIM->setChecked(true);
@@ -20,6 +21,7 @@ Comparison::Comparison(const QVector<Video *> &videosParam, const Prefs &prefsPa
     ui->thresholdSliderMax->setValue(QVariant(_prefs._thresholdSSIMMax * 100).toInt());
     ui->progressBar->setMaximum(_prefs._numberOfVideos * (_prefs._numberOfVideos - 1) / 2);
 
+    on_preprocessVideo_clicked();
     on_nextVideo_clicked();
 }
 
@@ -78,9 +80,42 @@ void Comparison::confirmToExit()
     }
 }
 
+Video* Comparison::get_left_video() { return _preprocessedVideos.length() > 0 ? _preprocessedVideos[_vectorIndex].first : _videos[_leftVideo];}
+
+Video* Comparison::get_left_video() const { return _preprocessedVideos.length() > 0 ? _preprocessedVideos[_vectorIndex].first : _videos[_leftVideo];}
+
+Video* Comparison::get_right_video() { return _preprocessedVideos.length() > 0 ? _preprocessedVideos[_vectorIndex].second : _videos[_rightVideo];}
+
+Video* Comparison::get_right_video() const { return _preprocessedVideos.length() > 0 ? _preprocessedVideos[_vectorIndex].second : _videos[_rightVideo];}
+
+
+
 void Comparison::on_prevVideo_clicked()
 {
     _seekForwards = false;
+
+    if(_preprocessedVideos.length() > 0){
+        while(1){
+            _vectorIndex-=1;
+            if(_vectorIndex < 0){
+                    _vectorIndex = 0;
+                    confirmToExit();
+                    return;
+            }
+
+            const QPair<Video *, Video *> pair = _preprocessedVideos[_vectorIndex];
+            if(QFileInfo::exists(pair.first->filename) && QFileInfo::exists(pair.second->filename)){
+                showVideo(QStringLiteral("left"));
+                showVideo(QStringLiteral("right"));
+                highlightBetterProperties();
+                updateUI();
+                return;
+            }
+        }
+    }
+
+    emit sendStatusMessage(QString("no preproccessed, skipping"));
+
     QVector<Video*>::const_iterator left, right, begin = _videos.cbegin();
     for(_rightVideo--, left=begin+_leftVideo; left>=begin; left--, _leftVideo--)
     {
@@ -106,6 +141,39 @@ void Comparison::on_nextVideo_clicked()
     const int oldLeft = _leftVideo;
     const int oldRight = _rightVideo;
 
+    if(_preprocessedVideos.length() > 0){
+        emit sendStatusMessage(QString("using %1 preproccessed").arg(_preprocessedVideos.length()));
+        while(1){
+            _vectorIndex+=1;
+            if(_vectorIndex >= _preprocessedVideos.length()){
+                    _vectorIndex = _preprocessedVideos.length() - 1;
+                    confirmToExit();
+                    return;
+            }
+            emit sendStatusMessage(QString("%1 preproccessed index").arg(_vectorIndex));
+
+            const QPair<Video *, Video *> pair = _preprocessedVideos[_vectorIndex];
+            if(QFileInfo::exists(pair.first->filename) && QFileInfo::exists(pair.second->filename)){
+                showVideo(QStringLiteral("left"));
+                showVideo(QStringLiteral("right"));
+                highlightBetterProperties();
+                if(_similarityMap.contains(pair)){
+                    if(_prefs._comparisonMode == _prefs._PHASH)
+                        _phashSimilarity = _similarityMap[pair];
+                    if(_prefs._comparisonMode == _prefs._SSIM)
+                        _ssimSimilarity = _similarityMap[pair];
+                }
+                updateUI();
+                return;
+            } else {
+                emit sendStatusMessage(QString("file %1 not exist").arg(pair.first->filename));
+                emit sendStatusMessage(QString("file %1 not exist").arg(pair.second->filename));
+            }
+        }
+    }
+
+    emit sendStatusMessage(QString("no preproccessed, skipping"));
+
     QVector<Video*>::const_iterator left, right, begin = _videos.cbegin(), end = _videos.cend();
     for(left=begin+_leftVideo; left<end; left++, _leftVideo++)
     {
@@ -127,10 +195,78 @@ void Comparison::on_nextVideo_clicked()
     confirmToExit();
 }
 
+void Comparison::on_preprocessVideo_clicked()
+{
+    _seekForwards = true;
+    _preprocessedVideos.clear();
+    _similarityMap.clear();
+
+    //QVector<Video*>::const_iterator left, right, begin = _videos.cbegin(), end = _videos.cend() - 1;
+
+    //QVector<QPair<Video *, Video *>> vec_private;
+    #pragma omp parallel for
+    for(int i = 0; i < _videos.size(); i++)
+    {
+        for(int j=i+1; j < _videos.size(); j++)
+        {
+            if(bothVideosMatch(_videos.at(i), _videos.at(j)))
+            {
+                #pragma omp critical
+                {
+                    QPair<Video *, Video *> _pair = QPair<Video *, Video *>();
+                    _pair.first = _videos.at(i);
+                    _pair.second = _videos.at(j);
+                    //_preprocessedVideos.append(_pair);
+                    _preprocessedVideos.push_back(_pair);
+                    if(_prefs._comparisonMode == _prefs._PHASH)
+                        _similarityMap[_pair] = _phashSimilarity;
+                    if(_prefs._comparisonMode == _prefs._SSIM)
+                        _similarityMap[_pair] = _ssimSimilarity;
+                }
+            }
+        }
+    }
+
+    emit sendStatusMessage(QString("Preprocessed %1 matches").arg(_preprocessedVideos.length()));
+
+
+    //_preprocessedVideos.append(vec_private);
+
+    _leftVideo=0;
+    _rightVideo=0;
+    _vectorIndex=-1;
+
+    emit sendStatusMessage(QString("Preprocessed %1 matches").arg(_preprocessedVideos.length()));
+    on_nextVideo_clicked();
+}
+
 bool Comparison::bothVideosMatch(const Video *left, const Video *right)
 {
     bool theyMatch = false;
     _phashSimilarity = 0;
+
+    //size and time filters
+    const int min_size_b = 52428800;
+    const int min_time_ms = 300000;
+    const QString filter_out = "error";
+
+    if(left->filename.contains(filter_out))
+        return false;
+
+    if(right->filename.contains(filter_out))
+        return false;
+
+    if(left->size < min_size_b)
+        return false;
+
+    if(left->duration < min_time_ms)
+        return false;
+
+    if(right->size < min_size_b)
+        return false;
+
+    if(right->duration < min_time_ms)
+        return false;
 
     const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;
     for(int left_hash=0; left_hash<hashes; left_hash++)
@@ -183,54 +319,54 @@ int Comparison::phashSimilarity(const Video *left, const Video *right, const int
 
 void Comparison::showVideo(const QString &side) const
 {
-    int thisVideo = _leftVideo;
+    Video* thisVideo = get_left_video();
     if(side == QLatin1String("right"))
-        thisVideo = _rightVideo;
+        thisVideo = get_right_video();
 
     auto *Image = this->findChild<ClickableLabel *>(side + QStringLiteral("Image"));
-    QBuffer pixels(&_videos[thisVideo]->thumbnail);
+    QBuffer pixels(&thisVideo->thumbnail);
     QImage image;
     image.load(&pixels, QByteArrayLiteral("JPG"));
     Image->setPixmap(QPixmap::fromImage(image).scaled(Image->width(), Image->height(), Qt::KeepAspectRatio));
 
     auto *FileName = this->findChild<ClickableLabel *>(side + QStringLiteral("FileName"));
-    FileName->setText(QFileInfo(_videos[thisVideo]->filename).fileName());
+    FileName->setText(QFileInfo(thisVideo->filename).fileName());
     FileName->setToolTip(QStringLiteral("%1\nOpen in file manager")
-                                        .arg(QDir::toNativeSeparators(_videos[thisVideo]->filename)));
+                                        .arg(QDir::toNativeSeparators(thisVideo->filename)));
 
-    QFileInfo videoFile(_videos[thisVideo]->filename);
+    QFileInfo videoFile(thisVideo->filename);
     auto *PathName = this->findChild<QLabel *>(side + QStringLiteral("PathName"));
     PathName->setText(QDir::toNativeSeparators(videoFile.absolutePath()));
 
     auto *FileSize = this->findChild<QLabel *>(side + QStringLiteral("FileSize"));
-    FileSize->setText(readableFileSize(_videos[thisVideo]->size));
+    FileSize->setText(readableFileSize(thisVideo->size));
 
     auto *Duration = this->findChild<QLabel *>(side + QStringLiteral("Duration"));
-    Duration->setText(readableDuration(_videos[thisVideo]->duration));
+    Duration->setText(readableDuration(thisVideo->duration));
 
     auto *Modified = this->findChild<QLabel *>(side + QStringLiteral("Modified"));
-    Modified->setText(_videos[thisVideo]->modified.toString(QStringLiteral("yyyy-MM-dd hh:mm:ss")));
+    Modified->setText(thisVideo->modified.toString(QStringLiteral("yyyy-MM-dd hh:mm:ss")));
 
     const QString resolutionString = QStringLiteral("%1x%2").
-                  arg(_videos[thisVideo]->width).arg(_videos[thisVideo]->height);
+                  arg(thisVideo->width).arg(thisVideo->height);
     auto *Resolution = this->findChild<QLabel *>(side + QStringLiteral("Resolution"));
     Resolution->setText(resolutionString);
 
     auto *FrameRate = this->findChild<QLabel *>(side + QStringLiteral("FrameRate"));
-    const double fps = _videos[thisVideo]->framerate;
+    const double fps = thisVideo->framerate;
     if(fps == 0.0)
         FrameRate->clear();
     else
         FrameRate->setText(QStringLiteral("%1 FPS").arg(fps));
 
     auto *BitRate = this->findChild<QLabel *>(side + QStringLiteral("BitRate"));
-    BitRate->setText(readableBitRate(_videos[thisVideo]->bitrate));
+    BitRate->setText(readableBitRate(thisVideo->bitrate));
 
     auto *Codec = this->findChild<QLabel *>(side + QStringLiteral("Codec"));
-    Codec->setText(_videos[thisVideo]->codec);
+    Codec->setText(thisVideo->codec);
 
     auto *Audio = this->findChild<QLabel *>(side + QStringLiteral("Audio"));
-    Audio->setText(_videos[thisVideo]->audio);
+    Audio->setText(thisVideo->audio);
 }
 
 QString Comparison::readableDuration(const int64_t &milliseconds) const
@@ -272,80 +408,83 @@ QString Comparison::readableBitRate(const double &kbps) const
 
 void Comparison::highlightBetterProperties() const
 {
+    Video* thisLeftVideo = get_left_video();
+    Video* thisRightVideo = get_right_video();
+
     ui->leftFileSize->setStyleSheet(QStringLiteral(""));
     ui->rightFileSize->setStyleSheet(QStringLiteral(""));       //both filesizes within 100 kb
-    if(qAbs(_videos[_leftVideo]->size - _videos[_rightVideo]->size) <= 1024*100)
+    if(qAbs(thisLeftVideo->size - thisRightVideo->size) <= 1024*100)
     {
         ui->leftFileSize->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
         ui->rightFileSize->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
     }
-    else if(_videos[_leftVideo]->size > _videos[_rightVideo]->size)
+    else if(thisLeftVideo->size > thisRightVideo->size)
         ui->leftFileSize->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
-    else if(_videos[_leftVideo]->size < _videos[_rightVideo]->size)
+    else if(thisLeftVideo->size < thisRightVideo->size)
         ui->rightFileSize->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
 
     ui->leftDuration->setStyleSheet(QStringLiteral(""));
     ui->rightDuration->setStyleSheet(QStringLiteral(""));       //both runtimes within 1 second
-    if(qAbs(_videos[_leftVideo]->duration - _videos[_rightVideo]->duration) <= 1000)
+    if(qAbs(thisLeftVideo->duration - thisRightVideo->duration) <= 1000)
     {
         ui->leftDuration->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
         ui->rightDuration->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
     }
-    else if(_videos[_leftVideo]->duration > _videos[_rightVideo]->duration)
+    else if(thisLeftVideo->duration > thisRightVideo->duration)
         ui->leftDuration->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
-    else if(_videos[_leftVideo]->duration < _videos[_rightVideo]->duration)
+    else if(thisLeftVideo->duration < thisRightVideo->duration)
         ui->rightDuration->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
 
     ui->leftBitRate->setStyleSheet(QStringLiteral(""));
     ui->rightBitRate->setStyleSheet(QStringLiteral(""));
-    if(_videos[_leftVideo]->bitrate == _videos[_rightVideo]->bitrate)
+    if(thisLeftVideo->bitrate == thisRightVideo->bitrate)
     {
         ui->leftBitRate->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
         ui->rightBitRate->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
     }
-    else if(_videos[_leftVideo]->bitrate > _videos[_rightVideo]->bitrate)
+    else if(thisLeftVideo->bitrate > thisRightVideo->bitrate)
         ui->leftBitRate->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
-    else if(_videos[_leftVideo]->bitrate < _videos[_rightVideo]->bitrate)
+    else if(thisLeftVideo->bitrate < thisRightVideo->bitrate)
         ui->rightBitRate->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
 
     ui->leftFrameRate->setStyleSheet(QStringLiteral(""));
     ui->rightFrameRate->setStyleSheet(QStringLiteral(""));      //both framerates within 0.1 fps
-    if(qAbs(_videos[_leftVideo]->framerate - _videos[_rightVideo]->framerate) <= 0.1)
+    if(qAbs(thisLeftVideo->framerate - thisRightVideo->framerate) <= 0.1)
     {
         ui->leftFrameRate->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
         ui->rightFrameRate->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
     }
-    else if(_videos[_leftVideo]->framerate > _videos[_rightVideo]->framerate)
+    else if(thisLeftVideo->framerate > thisRightVideo->framerate)
         ui->leftFrameRate->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
-    else if(_videos[_leftVideo]->framerate < _videos[_rightVideo]->framerate)
+    else if(thisLeftVideo->framerate < thisRightVideo->framerate)
         ui->rightFrameRate->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
 
     ui->leftModified->setStyleSheet(QStringLiteral(""));
     ui->rightModified->setStyleSheet(QStringLiteral(""));
-    if(_videos[_leftVideo]->modified == _videos[_rightVideo]->modified)
+    if(thisLeftVideo->modified == thisRightVideo->modified)
     {
         ui->leftModified->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
         ui->rightModified->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
     }
-    else if(_videos[_leftVideo]->modified < _videos[_rightVideo]->modified)
+    else if(thisLeftVideo->modified < thisRightVideo->modified)
         ui->leftModified->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
-    else if(_videos[_leftVideo]->modified > _videos[_rightVideo]->modified)
+    else if(thisLeftVideo->modified > thisRightVideo->modified)
         ui->rightModified->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
 
     ui->leftResolution->setStyleSheet(QStringLiteral(""));
     ui->rightResolution->setStyleSheet(QStringLiteral(""));
 
-    if(_videos[_leftVideo]->width * _videos[_leftVideo]->height ==
-       _videos[_rightVideo]->width * _videos[_rightVideo]->height)
+    if(thisLeftVideo->width * thisLeftVideo->height ==
+       thisRightVideo->width * thisRightVideo->height)
     {
         ui->leftResolution->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
         ui->rightResolution->setStyleSheet(QStringLiteral("QLabel { color : peru; }"));
     }
-    else if(_videos[_leftVideo]->width * _videos[_leftVideo]->height >
-       _videos[_rightVideo]->width * _videos[_rightVideo]->height)
+    else if(thisLeftVideo->width * thisLeftVideo->height >
+       thisRightVideo->width *thisRightVideo->height)
         ui->leftResolution->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
-    else if(_videos[_leftVideo]->width * _videos[_leftVideo]->height <
-            _videos[_rightVideo]->width * _videos[_rightVideo]->height)
+    else if(thisLeftVideo->width * thisLeftVideo->height <
+            thisRightVideo->width * thisRightVideo->height)
         ui->rightResolution->setStyleSheet(QStringLiteral("QLabel { color : green; }"));
 }
 
@@ -392,12 +531,16 @@ void Comparison::openFileManager(const QString &filename) const
     #endif
 }
 
-void Comparison::deleteVideo(const int &side)
+void Comparison::deleteVideo(const QString &side)
 {
-    const QString filename = _videos[side]->filename;
+    Video* thisVideo = get_left_video();
+    if(side == QLatin1String("right"))
+        thisVideo = get_right_video();
+
+    const QString filename = thisVideo->filename;
     const QString onlyFilename = filename.right(filename.length() - filename.lastIndexOf("/") - 1);
-    const Db cache(filename);                       //generate unique id before file has been deleted
-    const QString id = cache.uniqueId(filename, _videos[side]->modified, "");
+    const Db cache(filename,  _prefs._mainwPtr);                       //generate unique id before file has been deleted
+    const QString id = cache.uniqueId(filename, thisVideo->modified, "");
 
     if(!QFileInfo::exists(filename))                //video was already manually deleted, skip to next
     {
@@ -412,7 +555,7 @@ void Comparison::deleteVideo(const int &side)
         else
         {
             _videosDeleted++;
-            _spaceSaved = _spaceSaved + _videos[side]->size;
+            _spaceSaved = _spaceSaved + thisVideo->size;
             cache.removeVideo(id);
             emit sendStatusMessage(QString("Deleted %1").arg(QDir::toNativeSeparators(filename)));
             _seekForwards? on_nextVideo_clicked() : on_prevVideo_clicked();
@@ -447,17 +590,20 @@ void Comparison::moveVideo(const QString &from, const QString &to)
 
 void Comparison::on_swapFilenames_clicked() const
 {
-    const QFileInfo leftVideoFile(_videos[_leftVideo]->filename);
+    Video* leftVideo = get_left_video();
+    Video* rightVideo = get_right_video();
+
+    const QFileInfo leftVideoFile(leftVideo->filename);
     const QString leftPathname = leftVideoFile.absolutePath();
     const QString oldLeftFilename = leftVideoFile.fileName();
-    const QDateTime oldLeftDatetime = _videos[_leftVideo]->modified;
+    const QDateTime oldLeftDatetime = leftVideo->modified;
     const QString oldLeftNoExtension = oldLeftFilename.left(oldLeftFilename.lastIndexOf("."));
     const QString leftExtension = oldLeftFilename.right(oldLeftFilename.length() - oldLeftFilename.lastIndexOf("."));
 
-    const QFileInfo rightVideoFile(_videos[_rightVideo]->filename);
+    const QFileInfo rightVideoFile(rightVideo->filename);
     const QString rightPathname = rightVideoFile.absolutePath();
     const QString oldRightFilename = rightVideoFile.fileName();
-    const QDateTime oldRightDatetime = _videos[_rightVideo]->modified;
+    const QDateTime oldRightDatetime = rightVideo->modified;
     const QString oldRightNoExtension = oldRightFilename.left(oldRightFilename.lastIndexOf("."));
     const QString rightExtension = oldRightFilename.right(oldRightFilename.length() - oldRightFilename.lastIndexOf("."));
 
@@ -467,19 +613,19 @@ void Comparison::on_swapFilenames_clicked() const
     const QString newRightFilename = QStringLiteral("%1%2").arg(oldLeftNoExtension, rightExtension);
     const QString newRightPathAndFilename = QStringLiteral("%1/%2").arg(rightPathname, newRightFilename);
 
-    QFile leftFile(_videos[_leftVideo]->filename);                  //rename files
-    QFile rightFile(_videos[_rightVideo]->filename);
+    QFile leftFile(leftVideo->filename);                  //rename files
+    QFile rightFile(rightVideo->filename);
     leftFile.rename(QStringLiteral("%1/VidupeRenamedVideo.avi").arg(leftPathname));
     rightFile.rename(newRightPathAndFilename);
     leftFile.rename(newLeftPathAndFilename);
 
-    _videos[_leftVideo]->filename = newLeftPathAndFilename;         //update filename in object
-    _videos[_rightVideo]->filename = newRightPathAndFilename;
+    leftVideo->filename = newLeftPathAndFilename;         //update filename in object
+    rightVideo->filename = newRightPathAndFilename;
 
     ui->leftFileName->setText(newLeftFilename);                     //update UI
     ui->rightFileName->setText(newRightFilename);
 
-    Db cache(_videos[_leftVideo]->filename);
+    Db cache(leftVideo->filename,  _prefs._mainwPtr);
     cache.removeVideo(cache.uniqueId(oldLeftFilename, oldLeftDatetime, ""));             //remove both videos from cache
     cache.removeVideo(cache.uniqueId(oldRightFilename, oldRightDatetime, ""));
 }
@@ -487,24 +633,28 @@ void Comparison::on_swapFilenames_clicked() const
 //should swap folder names
 void Comparison::on_swapFolders_clicked() const
 {
-    const QFileInfo leftVideoFile(_videos[_leftVideo]->filename);
+    Video* leftVideo = get_left_video();
+    Video* rightVideo = get_right_video();
+
+
+    const QFileInfo leftVideoFile(leftVideo->filename);
     const QString leftPathname = leftVideoFile.absolutePath();
     const QString leftFilename = leftVideoFile.fileName();
     QDir leftDir = leftVideoFile.dir();
     const QString leftDirName = leftDir.dirName();
     const QString leftDirPath = leftDir.absolutePath();
-    const QDateTime oldLeftDatetime = _videos[_leftVideo]->modified;
+    const QDateTime oldLeftDatetime = leftVideo->modified;
 
 
     leftDir.cdUp();
 
-    const QFileInfo rightVideoFile(_videos[_rightVideo]->filename);
+    const QFileInfo rightVideoFile(rightVideo->filename);
     const QString rightPathname = rightVideoFile.absolutePath();
     const QString rightFilename = rightVideoFile.fileName();
     QDir rightDir = rightVideoFile.dir();
     const QString rightDirName = rightDir.dirName();
     const QString rightDirPath = rightDir.absolutePath();
-    const QDateTime oldRightDatetime = _videos[_rightVideo]->modified;
+    const QDateTime oldRightDatetime = rightVideo->modified;
 
 
     rightDir.cdUp();
@@ -520,13 +670,13 @@ void Comparison::on_swapFolders_clicked() const
     QFile::rename(rightDirPath, newRightPath);
     QFile::rename(tempLeftPath, newLeftPath);
 
-    _videos[_leftVideo]->filename = newLeftPathAndFilename;         //update filename in object
-    _videos[_rightVideo]->filename = newRightPathAndFilename;
+    leftVideo->filename = newLeftPathAndFilename;         //update filename in object
+    rightVideo->filename = newRightPathAndFilename;
 
     ui->leftPathName->setText(newLeftPath);                     //update UI
     ui->rightPathName->setText(newRightPath);
 
-    Db cache(_videos[_leftVideo]->filename);
+    Db cache(leftVideo->filename,  _prefs._mainwPtr);
     cache.removeVideo(cache.uniqueId(leftFilename, oldLeftDatetime, ""));             //remove both videos from cache
     cache.removeVideo(cache.uniqueId(rightFilename, oldRightDatetime, ""));
 }
@@ -534,12 +684,16 @@ void Comparison::on_swapFolders_clicked() const
 //should swap folder names
 void Comparison::on_swapFilesToFolders_clicked() const
 {
-    const QFileInfo leftVideoFile(_videos[_leftVideo]->filename);
+    Video* leftVideo = get_left_video();
+    Video* rightVideo = get_right_video();
+
+
+    const QFileInfo leftVideoFile(leftVideo->filename);
     const QString leftPathname = leftVideoFile.absolutePath();
     const QString leftFilename = leftVideoFile.fileName();
     const QString leftNoExtension = leftFilename.left(leftFilename.lastIndexOf("."));
     const QString leftExtension = leftFilename.right(leftFilename.length() - leftFilename.lastIndexOf("."));
-    const QDateTime oldLeftDatetime = _videos[_leftVideo]->modified;
+    const QDateTime oldLeftDatetime = leftVideo->modified;
 
     QDir leftDir = leftVideoFile.dir();
     const QString leftDirName = leftDir.dirName();
@@ -547,12 +701,12 @@ void Comparison::on_swapFilesToFolders_clicked() const
 
     leftDir.cdUp();
 
-    const QFileInfo rightVideoFile(_videos[_rightVideo]->filename);
+    const QFileInfo rightVideoFile(rightVideo->filename);
     const QString rightPathname = rightVideoFile.absolutePath();
     const QString rightFilename = rightVideoFile.fileName();
     const QString rightNoExtension = rightFilename.left(rightFilename.lastIndexOf("."));
     const QString rightExtension = rightFilename.right(rightFilename.length() - rightFilename.lastIndexOf("."));
-    const QDateTime oldRightDatetime = _videos[_rightVideo]->modified;
+    const QDateTime oldRightDatetime = rightVideo->modified;
 
     QDir rightDir = rightVideoFile.dir();
     const QString rightDirName = rightDir.dirName();
@@ -582,21 +736,22 @@ void Comparison::on_swapFilesToFolders_clicked() const
     QFile::rename(newRightPathAndFilename, newRightPathAndFilenameAfterRename);
     QFile::rename(newTempLeftPathAndFilename, newLeftPathAndFilenameAfterRename);
 
-    _videos[_leftVideo]->filename = newLeftPathAndFilenameAfterRename;         //update filename in object
-    _videos[_rightVideo]->filename = newRightPathAndFilenameAfterRename;
+    leftVideo->filename = newLeftPathAndFilenameAfterRename;         //update filename in object
+    rightVideo->filename = newRightPathAndFilenameAfterRename;
 
     ui->leftPathName->setText(newLeftPath);                     //update UI
     ui->rightPathName->setText(newRightPath);
     ui->leftFileName->setText(newLeftFilenameAfterRename);
     ui->rightFileName->setText(newRightFilenameAfterRename);
 
-    Db cache(_videos[_leftVideo]->filename);
+    Db cache(leftVideo->filename,  _prefs._mainwPtr);
     cache.removeVideo(cache.uniqueId(leftFilename, oldLeftDatetime, ""));             //remove both videos from cache
     cache.removeVideo(cache.uniqueId(rightFilename, oldRightDatetime, ""));
 }
 
 void Comparison::on_thresholdSlider_valueChanged(const int &value)
 {
+    _preprocessedVideos.clear();
     _prefs._thresholdSSIM = value / 100.0;
     const int matchingBitsOf64 = static_cast<int>(round(64 * _prefs._thresholdSSIM));
     _prefs._thresholdPhash = matchingBitsOf64;
@@ -620,6 +775,7 @@ void Comparison::on_thresholdSlider_valueChanged(const int &value)
 
 void Comparison::on_thresholdSliderMax_valueChanged(const int &value)
 {
+    _preprocessedVideos.clear();
     _prefs._thresholdSSIMMax = value / 100.0;
     const int matchingBitsOf64 = static_cast<int>(round(64 * _prefs._thresholdSSIMMax));
     _prefs._thresholdPhashMax = matchingBitsOf64;
@@ -648,11 +804,11 @@ void Comparison::resizeEvent(QResizeEvent *event)
         return;     //automatic initial resize event can happen before closing when values went over limit
 
     QImage image;
-    QBuffer leftPixels(&_videos[_leftVideo]->thumbnail);
+    QBuffer leftPixels(&get_left_video()->thumbnail);
     image.load(&leftPixels, QByteArrayLiteral("JPG"));
     ui->leftImage->setPixmap(QPixmap::fromImage(image).scaled(
                              ui->leftImage->width(), ui->leftImage->height(), Qt::KeepAspectRatio));
-    QBuffer rightPixels(&_videos[_rightVideo]->thumbnail);
+    QBuffer rightPixels(&get_right_video()->thumbnail);
     image.load(&rightPixels, QByteArrayLiteral("JPG"));
     ui->rightImage->setPixmap(QPixmap::fromImage(image).scaled(
                               ui->rightImage->width(), ui->rightImage->height(), Qt::KeepAspectRatio));
@@ -687,14 +843,14 @@ void Comparison::wheelEvent(QWheelEvent *event)
         QApplication::setOverrideCursor(Qt::WaitCursor);
 
         QImage image;
-        image = _videos[_leftVideo]->captureAt(10);
+        image = get_left_video()->captureAt(10);
         ui->leftImage->setPixmap(QPixmap::fromImage(image).scaled(
                                  ui->leftImage->width(), ui->leftImage->height(), Qt::KeepAspectRatio));
         _leftZoomed = QPixmap::fromImage(image);      //keep it in memory
         _leftW = image.width();
         _leftH = image.height();
 
-        image = _videos[_rightVideo]->captureAt(10);
+        image = get_right_video()->captureAt(10);
         ui->rightImage->setPixmap(QPixmap::fromImage(image).scaled(
                                   ui->rightImage->width(), ui->rightImage->height(), Qt::KeepAspectRatio));
         _rightZoomed = QPixmap::fromImage(image);

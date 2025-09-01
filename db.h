@@ -3,14 +3,15 @@
 
 #include <QSqlDatabase>
 #include <QDateTime>
+#include <QDialog>
 
 class Video;
 
-class Db
-{
+class Db : public QObject {
+    Q_OBJECT
 
 public:
-    explicit Db(const QString &filename);
+    Db(const QString &filename, QWidget *mainwPtr);
     ~Db() { _db.close(); _db = QSqlDatabase(); _db.removeDatabase(_connection); }
 
 private:
@@ -18,6 +19,9 @@ private:
     QString _connection;
     //QString _id;
     //QDateTime _modified;
+
+signals:
+    void sendStatusMessage(const QString &message) const;
 
 public:
     //return md5 hash of parameter's file, or (as convinience) md5 hash of the file given to constructor
@@ -47,6 +51,8 @@ public:
     bool removeVideo(const QString &id) const;
 
     void populateMetadatas(const QHash<QString, Video *> _everyVideo) const;
+
+    void populateCaptures(const QHash<QString, Video *> _everyVideo, const QVector<int> &percentages) const;
 };
 
 #endif // DB_H
