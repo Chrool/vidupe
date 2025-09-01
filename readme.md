@@ -1,3 +1,28 @@
+continuing kristians work with some QOL improvements
+
+add preprocessing matches function (no need to wait for a few seconds between each 'next' click)
+ - this automatically resets the mode back to just in time processing if you change the thresholds
+ - triggers automatically on first load
+bulk load cache improvements (chews ram)
+maximum similarity (once you clear a range you can move the range down so you dont get any of the previous bad results)
+min duration / filesize (remove the chaff. hardcoded atm)
+cache db columns to keep track of stale records
+updated to 64 bit to so we can use more than 4gb of RAM
+add support for locations.ini to preload a default list of locations in the expected format (;Z:\;X:\;P:\;L:\)
+cutends comparison; compares each individual screenshot then takes the highest result, as apposed to comparing the whole grids to each other.
+ - added new columns to cache to support extras screenshots for this mode
+
+Known Issues
+ - f2f / folder buttons are bugged. disabled for now
+ - cutends takes alot of compute. 
+ - cache needs to be recreated is using one from older version because of the new db columns
+ - hardcoded size / duration filter
+ - similarity readout doesnt update when using preprocess mode
+
+future improvements
+ - add ability to save / resume session from csv
+ - AI ? use SSIM / PHASH to get an initial list then use AI to determine if they truly are a match
+
 Vidupe 1.211
 ------------
 
@@ -106,6 +131,7 @@ Trust your eyes, watch both videos in a video player before deleting.
 ![](https://user-images.githubusercontent.com/46446783/64857475-520d8180-d62d-11e9-9dc6-36889a3e3218.jpg)
 ![](https://user-images.githubusercontent.com/46446783/64857483-58036280-d62d-11e9-839c-79e2863adfd8.jpg)
 
-Vidupe Copyright (C) 2018-2019 Kristian Koskim‰ki  
+Vidupe Copyright (C) 2018-2019 Kristian Koskim√§ki  
 Vidupe is a free software distributed under the GNU GPL.  
 Read LICENSE.txt for more information.
+
