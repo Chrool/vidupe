@@ -4,6 +4,8 @@
 #include "db.h"
 #include "video.h"
 #include <QSqlError>
+#include <QElapsedTimer>
+#include <QDebug>
 
 Db::Db(const QString &connectionParam, QWidget *mainwPtr)
 {
@@ -16,7 +18,6 @@ Db::Db(const QString &connectionParam, QWidget *mainwPtr)
     _db.setDatabaseName(dbfilename);
     _db.open();
 
-    //createTables();
 }
 
 QString Db::uniqueId(const QString &filename, const QDateTime &dateMod, const QString &id)
@@ -183,51 +184,43 @@ void Db::populateMetadatas(const QHash<QString, Video *> _everyVideo) const
 void Db::populateCaptures(const QHash<QString, Video *> _everyVideo, const QVector<int> &percentages) const
 {
     QSqlQuery query(_db);
-    QString inArgs = "";
-    QString args = "";
     int count = 0;
     const int limit = 2000;
     int overallCount = 0;
+    QStringList argsList;
+    QStringList inArgsList;
 
     QHashIterator<QString, Video *> i(_everyVideo);
-    for(auto percentage : percentages)
-    {
-        if(args.length() == 0){
-           args = "SELECT id, at" + QString::number(percentage);
-        } else {
-            args += ", at" + QString::number(percentage);
-        }
+    for (int percentage : percentages) {
+        argsList << QString("at%1").arg(percentage);
     }
+    QString args = "SELECT id, " + argsList.join(", ");
 
     while (i.hasNext()) {
         i.next();
-        if(inArgs.length() == 0){
-           inArgs = QStringLiteral("'%1'").arg(i.key());
-        } else {
-            inArgs += QStringLiteral(", '%1'").arg(i.key());
-        }
+        inArgsList << QString("'%1'").arg(i.key());
 
         count++;
         overallCount++;
         if(count == limit || !i.hasNext()){
-            const QString query_string = args + QStringLiteral(" FROM capture WHERE id in (%1);").arg(inArgs);
+            QString inClause = inArgsList.join(", ");
+            const QString query_string = args + QStringLiteral(" FROM capture WHERE id in (%1);").arg(inClause);
 
              query.exec(query_string);
-
+             if (!query.exec(query_string)) {
+                 qWarning() << "Query failed:" << query.lastError().text();
+                 continue;
+             }
              while(query.next()){
                  const QString id = query.value("id").toString();
                  Video *video = _everyVideo[id];
-                 for(auto percentage : percentages)
-                 {
-                      video->captures[percentage] = nullptr;
-                 }
                  for(auto percentage : percentages)
                  {
                      video->captures[percentage] = query.value(QStringLiteral("at%1").arg(percentage)).toByteArray();
                  }
              }
              count = 0;
-             inArgs = "";
+             inArgsList.clear();
              query.clear();
         }
     }

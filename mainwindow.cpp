@@ -3,6 +3,8 @@
 #include <QScrollBar>
 #include "mainwindow.h"
 #include "comparison.h"
+#include <QElapsedTimer>
+#include <QDebug>
 
 int main(int argc, char *argv[])
 {
@@ -141,6 +143,7 @@ void MainWindow::calculateThreshold(const int &value)
                 "Smaller: less strict, can match different videos (false positive)\n"
                 "Larger: more strict, can miss identical videos (false negative)").arg(value).arg(matchingBitsOf64);
     ui->thresholdSlider->setToolTip(thresholdMessage);
+    addStatusMessage(QStringLiteral("Threshold: %1% (%2/64 bits = match)").arg(value).arg(matchingBitsOf64));
 }
 
 void MainWindow::on_browseFolders_clicked() const
@@ -280,13 +283,20 @@ void MainWindow::processVideos()
 
     Db setup("main",  this);
     setup.createTables();
-
+    QElapsedTimer timer;
+    timer.start();
     setup.populateMetadatas(_everyVideo);
+    qDebug() << "populateMetadatas took" << timer.elapsed() << "ms";
     Thumbnail thumb(_prefs._thumbnails);
+    timer.restart();
+
     setup.populateCaptures(_everyVideo, thumb.percentages());
+    qDebug() << "populateCaptures took" << timer.elapsed() << "ms";
+    timer.restart();
 
 //Do batch cache retrieval here eventually
     QThreadPool threadPool;
+
     for(const auto &videoTask : _everyVideo.values())
     {
         if(_userPressedStop)
@@ -303,7 +313,7 @@ void MainWindow::processVideos()
     }
     threadPool.waitForDone();
     QApplication::processEvents();                  //process signals from last threads
-
+    qDebug() << "individual video setup took" << timer.elapsed() << "ms";
     ui->selectThumbnails->setDisabled(false);
     ui->processedFiles->setVisible(false);
     ui->progressBar->setVisible(false);

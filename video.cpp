@@ -1,5 +1,6 @@
 #include <QPainter>
 #include "video.h"
+#include <memory>
 
 Prefs Video::_prefs;
 int Video::_jpegQuality = _okJpegQuality;
@@ -19,20 +20,23 @@ Video::Video(const Prefs &prefsParam, const QString &filenameParam, const QDateT
 
 void Video::run()
 {
-    Db cache(id,  _prefs._mainwPtr);
+    std::unique_ptr<Db> cache;
     if(!cachedMetadata)      //check first if video properties are cached
     {
+        cache = std::make_unique<Db>(id, _prefs._mainwPtr);
         getMetadata(filename);          //if not, read them with ffmpeg
-        cache.writeMetadata(*this);
+        cache->writeMetadata(*this);
         cachedMetadata = false;
     }
-    if(width == 0 || height == 0 || duration == 0)
+
+    if(width == 0 || height == 0 || duration == 0 || size < _prefs._minSizeBytes || duration < _prefs._minTimeMs)
     {
         emit rejectVideo(this);
         return;
     }
 
     const int ret = takeScreenCaptures(cache);
+
     if(ret == _failure)
         emit rejectVideo(this);
     else if((_prefs._thumbnails != cutEnds && hash[0] == 0 ) ||
@@ -116,22 +120,26 @@ void Video::getMetadata(const QString &filename)
     size = videoFile.size();
 }
 
-int Video::takeScreenCaptures(const Db &cache)
+int Video::takeScreenCaptures(std::unique_ptr<Db>& cache)
 {
     Thumbnail thumb(_prefs._thumbnails);
+    std::unique_ptr<Db> thumbCache;
     QImage thumbnail(thumb.cols() * width, thumb.rows() * height, QImage::Format_RGB888);
     const QVector<int> percentages = thumb.percentages();
-    int capture = percentages.count();
+    int totalCaptures = percentages.count();
+    int capture = totalCaptures;
+
     int ofDuration = 100;
 
 //    if(!cachedCaptures)
 //    captures = cache.readCaptures(id, percentages);
-
+    //QPainter painter(&thumbnail);
     while(--capture >= 0)           //screen captures are taken in reverse order so errors are found early
     {
         QImage frame;
 //        QByteArray cachedImage = cache.readCapture(percentages[capture]);
-        QByteArray cachedImage = captures[percentages[capture]];
+        int percent = percentages[capture];
+        QByteArray cachedImage = captures[percent];
         QBuffer captureBuffer(&cachedImage);
         bool writeToCache = false;
 
@@ -143,13 +151,13 @@ int Video::takeScreenCaptures(const Db &cache)
         else
         {
             cachedCaptures = false;
-            frame = captureAt(percentages[capture], ofDuration);
+            frame = captureAt(percent, ofDuration);
             if(frame.isNull())                                  //taking screen capture may fail if video is broken
             {
                 ofDuration = ofDuration - _goBackwardsPercent;
                 if(ofDuration >= _videoStillUsable)             //retry a few times, always closer to beginning
                 {
-                    capture = percentages.count();
+                    capture = totalCaptures;
                     continue;
                 }
                 return _failure;
@@ -158,15 +166,26 @@ int Video::takeScreenCaptures(const Db &cache)
         }
         if(frame.width() > width || frame.height() > height)    //metadata parsing error or variable resolution
             return _failure;
-
-        QPainter painter(&thumbnail);                           //copy captured frame into right place in thumbnail
+        QPainter painter(&thumbnail); //copy captured frame into right place in thumbnail
+                                  //copy captured frame into right place in thumbnail
         painter.drawImage(capture % thumb.cols() * width, capture / thumb.cols() * height, frame);
 
         if(writeToCache)
         {
             frame = minimizeImage(frame);
             frame.save(&captureBuffer, QByteArrayLiteral("JPG"), _okJpegQuality);
-            cache.writeCapture(id, percentages[capture], cachedImage);
+            try {
+                    if(!cache){
+                        if(!thumbCache){
+                            thumbCache = std::make_unique<Db>(id, _prefs._mainwPtr);
+                        }
+                        thumbCache->writeCapture(id, percent, cachedImage);
+                    } else {
+                        cache->writeCapture(id, percent, cachedImage);
+                    }
+                } catch (const std::exception& e) {
+                    return _failure;
+                }
         }
     }
 

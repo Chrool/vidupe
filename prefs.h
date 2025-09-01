@@ -25,6 +25,8 @@ public:
     int _differentDurationModifier = 4;
     int _sameDurationModifier = 1;
     int _cacheLoadPageSize = 300;
+    int _minSizeBytes = 52428800;
+    int _minTimeMs = 300000;
 };
 
 #endif // PREFS_H

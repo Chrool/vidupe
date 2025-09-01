@@ -55,7 +55,7 @@ private slots:
     void on_nextVideo_clicked();
     void on_preprocessVideo_clicked();
 
-    bool bothVideosMatch(const Video *left, const Video *right);
+    double bothVideosMatch(const Video *left, const Video *right);
     int phashSimilarity(const Video *left, const Video *right, const int &leftHash, const int &rightHash);
 
     void showVideo(const QString &side) const;

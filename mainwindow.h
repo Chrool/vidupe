@@ -46,7 +46,7 @@ private slots:
     void on_blocksizeCombo_activated(const int &index) { _prefs._ssimBlockSize = static_cast<int>(pow(2, index+1)); ui->directoryBox->setFocus(); }
     void on_differentDurationCombo_activated(const int &index) { _prefs._differentDurationModifier = index; ui->directoryBox->setFocus(); }
     void on_sameDurationCombo_activated(const int &index) { _prefs._sameDurationModifier = index; ui->directoryBox->setFocus(); }
-    void on_thresholdSlider_valueChanged(const int &value) { ui->thresholdSlider->setValue(value); calculateThreshold(value); ui->directoryBox->setFocus(); }
+    void on_thresholdSlider_valueChanged(const int &value) { ui->thresholdSlider->setValue(value); calculateThreshold(value); ui->directoryBox->setFocus();  }
 
     void calculateThreshold(const int &value);
 

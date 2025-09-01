@@ -19,7 +19,7 @@ Comparison::Comparison(const QVector<Video *> &videosParam, const Prefs &prefsPa
         ui->selectSSIM->setChecked(true);
     ui->thresholdSlider->setValue(QVariant(_prefs._thresholdSSIM * 100).toInt());
     ui->thresholdSliderMax->setValue(QVariant(_prefs._thresholdSSIMMax * 100).toInt());
-    ui->progressBar->setMaximum(_prefs._numberOfVideos * (_prefs._numberOfVideos - 1) / 2);
+    ui->progressBar->setMaximum(100);
 
     on_preprocessVideo_clicked();
     on_nextVideo_clicked();
@@ -108,7 +108,14 @@ void Comparison::on_prevVideo_clicked()
                 showVideo(QStringLiteral("left"));
                 showVideo(QStringLiteral("right"));
                 highlightBetterProperties();
+                if(_similarityMap.contains(pair)){
+                    if(_prefs._comparisonMode == _prefs._PHASH)
+                        _phashSimilarity = _similarityMap[pair];
+                    if(_prefs._comparisonMode == _prefs._SSIM)
+                        _ssimSimilarity = _similarityMap[pair];
+                }
                 updateUI();
+                ui->progressBar->setValue(comparisonsSoFar());
                 return;
             }
         }
@@ -164,6 +171,8 @@ void Comparison::on_nextVideo_clicked()
                         _ssimSimilarity = _similarityMap[pair];
                 }
                 updateUI();
+                ui->progressBar->setValue(comparisonsSoFar());
+
                 return;
             } else {
                 emit sendStatusMessage(QString("file %1 not exist").arg(pair.first->filename));
@@ -209,7 +218,8 @@ void Comparison::on_preprocessVideo_clicked()
     {
         for(int j=i+1; j < _videos.size(); j++)
         {
-            if(bothVideosMatch(_videos.at(i), _videos.at(j)))
+            const double similarity = bothVideosMatch(_videos.at(i), _videos.at(j));
+            if(similarity)
             {
                 #pragma omp critical
                 {
@@ -219,9 +229,9 @@ void Comparison::on_preprocessVideo_clicked()
                     //_preprocessedVideos.append(_pair);
                     _preprocessedVideos.push_back(_pair);
                     if(_prefs._comparisonMode == _prefs._PHASH)
-                        _similarityMap[_pair] = _phashSimilarity;
+                        _similarityMap[_pair] = similarity;
                     if(_prefs._comparisonMode == _prefs._SSIM)
-                        _similarityMap[_pair] = _ssimSimilarity;
+                        _similarityMap[_pair] = similarity;
                 }
             }
         }
@@ -240,14 +250,12 @@ void Comparison::on_preprocessVideo_clicked()
     on_nextVideo_clicked();
 }
 
-bool Comparison::bothVideosMatch(const Video *left, const Video *right)
+double Comparison::bothVideosMatch(const Video *left, const Video *right)
 {
-    bool theyMatch = false;
     _phashSimilarity = 0;
+    double phashSimilarityResult = 0;
 
     //size and time filters
-    const int min_size_b = 52428800;
-    const int min_time_ms = 300000;
     const QString filter_out = "error";
 
     if(left->filename.contains(filter_out))
@@ -256,16 +264,16 @@ bool Comparison::bothVideosMatch(const Video *left, const Video *right)
     if(right->filename.contains(filter_out))
         return false;
 
-    if(left->size < min_size_b)
+    if(left->size < _prefs._minSizeBytes)
         return false;
 
-    if(left->duration < min_time_ms)
+    if(left->duration < _prefs._minTimeMs)
         return false;
 
-    if(right->size < min_size_b)
+    if(right->size < _prefs._minSizeBytes)
         return false;
 
-    if(right->duration < min_time_ms)
+    if(right->duration < _prefs._minTimeMs)
         return false;
 
     const int hashes = _prefs._thumbnails == cutEnds? 16 : 1;
@@ -273,26 +281,25 @@ bool Comparison::bothVideosMatch(const Video *left, const Video *right)
     {                               //if cutEnds mode: similarity is always the best one of both comparisons
         for(int right_hash=0; right_hash<hashes; right_hash++)
         {
-            _phashSimilarity = qMax( _phashSimilarity, phashSimilarity(left, right, left_hash, right_hash));
+            phashSimilarityResult = qMax((int)phashSimilarityResult, phashSimilarity(left, right, left_hash, right_hash));
+            _phashSimilarity = phashSimilarityResult;
             if(_prefs._comparisonMode == _prefs._PHASH)
             {
-                if(_phashSimilarity >= _prefs._thresholdPhash && _phashSimilarity <= _prefs._thresholdPhashMax )
-                    theyMatch = true;
+                if(phashSimilarityResult >= _prefs._thresholdPhash && phashSimilarityResult <= _prefs._thresholdPhashMax )
+                    return phashSimilarityResult;
             }                           //ssim comparison is slow, only do it if pHash differs at most 20 bits of 64
-            else if(_phashSimilarity >= qMax(_prefs._thresholdPhash, 44))
+            else if(phashSimilarityResult >= qMax(_prefs._thresholdPhash, 44))
             {
-                _ssimSimilarity = ssim(left->grayThumb[left_hash], right->grayThumb[right_hash], _prefs._ssimBlockSize);
-                _ssimSimilarity = _ssimSimilarity + _durationModifier / 64.0;   // b/64 bits (phash) <=> p/100 % (ssim)
-                if(_ssimSimilarity > _prefs._thresholdSSIM && _ssimSimilarity <= _prefs._thresholdSSIMMax)
-                    theyMatch = true;
+                phashSimilarityResult = ssim(left->grayThumb[left_hash], right->grayThumb[right_hash], _prefs._ssimBlockSize);
+                phashSimilarityResult = phashSimilarityResult + _durationModifier / 64.0;   // b/64 bits (phash) <=> p/100 % (ssim)
+                _phashSimilarity = phashSimilarityResult;
+                if(phashSimilarityResult > _prefs._thresholdSSIM && phashSimilarityResult <= _prefs._thresholdSSIMMax){
+                    return phashSimilarityResult;
+                }
             }
-            if(theyMatch)               //if cutEnds mode: first comparison matched already, skip second
-                break;
         }
-        if(theyMatch)               //if cutEnds mode: first comparison matched already, skip second
-            break;
     }
-    return theyMatch;
+    return 0;
 }
 
 int Comparison::phashSimilarity(const Video *left, const Video *right, const int &leftHash, const int &rightHash)
@@ -511,11 +518,16 @@ void Comparison::updateUI()
 
 int Comparison::comparisonsSoFar() const
 {
-    const int cmpFirst = _prefs._numberOfVideos;                    //comparisons done for first video
-    const int cmpThis = cmpFirst - _leftVideo;                      //comparisons done for current video
-    const int remaining = cmpThis * (cmpThis - 1) / 2;              //comparisons for remaining videos
-    const int maxComparisons = cmpFirst * (cmpFirst - 1) / 2;       //comparing all videos with each other
-    return maxComparisons - remaining + _rightVideo - _leftVideo;
+    //returns percent 0-100
+    if(_preprocessedVideos.length() > 0){
+        return int(_leftVideo / _preprocessedVideos.length() * 100);
+    } else {
+        const int cmpFirst = _prefs._numberOfVideos;                    //comparisons done for first video
+        const int cmpThis = cmpFirst - _leftVideo;                      //comparisons done for current video
+        const int remaining = cmpThis * (cmpThis - 1) / 2;              //comparisons for remaining videos
+        const int maxComparisons = cmpFirst * (cmpFirst - 1) / 2;       //comparing all videos with each other
+        return int(((maxComparisons - remaining + _rightVideo - _leftVideo)/maxComparisons)*100);
+    }
 }
 
 void Comparison::openFileManager(const QString &filename) const

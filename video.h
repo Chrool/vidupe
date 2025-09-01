@@ -15,6 +15,7 @@
 #include "db.h"
 #include <stdio.h>
 #include <iostream>
+#include <memory>
 
 class Video : public QObject, public QRunnable
 {
@@ -44,7 +45,7 @@ public:
 
 private slots:
     void getMetadata(const QString &filename);
-    int takeScreenCaptures(const Db &cache);
+    int takeScreenCaptures(std::unique_ptr<Db>& cache);
     void processThumbnail(QImage &thumbnail, const int &hashes);
     uint64_t computePhash(const cv::Mat &input) const;
     QImage minimizeImage(const QImage &image) const;
