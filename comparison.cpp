@@ -520,13 +520,14 @@ int Comparison::comparisonsSoFar() const
 {
     //returns percent 0-100
     if(_preprocessedVideos.length() > 0){
-        return int(_leftVideo / _preprocessedVideos.length() * 100);
+        int res = int((_vectorIndex * 100) / _preprocessedVideos.length());
+        return res;
     } else {
         const int cmpFirst = _prefs._numberOfVideos;                    //comparisons done for first video
         const int cmpThis = cmpFirst - _leftVideo;                      //comparisons done for current video
         const int remaining = cmpThis * (cmpThis - 1) / 2;              //comparisons for remaining videos
         const int maxComparisons = cmpFirst * (cmpFirst - 1) / 2;       //comparing all videos with each other
-        return int(((maxComparisons - remaining + _rightVideo - _leftVideo)/maxComparisons)*100);
+        return int((((maxComparisons - remaining + _rightVideo - _leftVideo) * 100)/maxComparisons));
     }
 }
 
